@@ -26,19 +26,50 @@
 %}
 
 /* ========================= NON-BOILERPLATE SECTION =========================*/
+
+re_quote    '
+re_key      [[:alnum:]\.\-]+
+re_value    (\\.|[^'])+
+re_operator (!?[:@])
+
+%x IN_CRITERIA IN_CRITERIA_VALUE
+
 %%
 
-[ \t]	; // ignore all whitespace
-[0-9]+\.[0-9]+  { yylval->fval = atof(yytext); return DAAP_T_FLOAT; }
-[0-9]+          { yylval->ival = atoi(yytext); return DAAP_T_INT; }
+{re_quote} { BEGIN IN_CRITERIA; return DAAP_T_QUOTE; }
+
+<IN_CRITERIA>{re_key}/{re_operator} { yylval->str = strdup(yytext); return DAAP_T_KEY; }
+<IN_CRITERIA>{re_operator} { BEGIN IN_CRITERIA_VALUE; return (*yytext == '!' ? DAAP_T_NOT_EQUAL : DAAP_T_EQUAL); }
+
+<IN_CRITERIA_VALUE>{re_value}/{re_quote} { yylval->str = strdup(yytext); return DAAP_T_VALUE; }
+<IN_CRITERIA_VALUE>{re_quote} { BEGIN INITIAL; return DAAP_T_QUOTE; }
+
 "\0"            { return DAAP_T_END; }
-"+"             { return DAAP_T_PLUS; }
-"-"             { return DAAP_T_MINUS; }
-"*"             { return DAAP_T_MULTIPLY; }
-"/"             { return DAAP_T_DIVIDE; }
+"+"|" "         { return DAAP_T_AND; }
+","             { return DAAP_T_OR; }
 "("             { return DAAP_T_LEFT; }
 ")"             { return DAAP_T_RIGHT; }
-
+"\r"?"\n"       { return DAAP_T_NEWLINE; }
 .               { return *yytext; } // Return anything else, should give syntax error
 
 %%
+
+int daap_lex_cb(char *input, void (*cb)(int, const char *))
+{
+  int ret;
+  yyscan_t scanner;
+  YY_BUFFER_STATE buf;
+  YYSTYPE val;
+
+  if ((ret = daap_lex_init(&scanner)) != 0)
+    return ret;
+
+  buf = daap__scan_string(input, scanner);
+
+  while ((ret = daap_lex(&val, scanner)) > 0)
+    cb(ret, daap_get_text(scanner));
+
+  daap__delete_buffer(buf, scanner);
+  daap_lex_destroy(scanner);
+  return 0;
+}

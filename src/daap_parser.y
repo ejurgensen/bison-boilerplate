@@ -10,6 +10,9 @@
 /* Gives better errors than "syntax error" */
 %define parse.error verbose
 
+/* Enables debug mode */
+%define parse.trace
+
 /* Adds output parameter to the parser */
 %parse-param {struct daap_result *result}
 
@@ -79,7 +82,7 @@ int daap_lex_parse(struct daap_result *result, char *input);
 /* Definition of struct that will hold the parsing result */
 %code requires {
 struct daap_result {
-  char str[32];
+  char str[1024];
   int ival;
   float fval;
   char errmsg[128];
@@ -88,50 +91,27 @@ struct daap_result {
 
 %union {
   int ival;
-  float fval;
+  char *str;
 }
 
 %token DAAP_T_END 0
 %token<ival> DAAP_T_INT
-%token<fval> DAAP_T_FLOAT
-%token DAAP_T_PLUS DAAP_T_MINUS DAAP_T_MULTIPLY DAAP_T_DIVIDE DAAP_T_LEFT DAAP_T_RIGHT
-%left DAAP_T_PLUS DAAP_T_MINUS
-%left DAAP_T_MULTIPLY DAAP_T_DIVIDE
+%token<str> DAAP_T_KEY DAAP_T_VALUE
+%token DAAP_T_QUOTE DAAP_T_AND DAAP_T_OR DAAP_T_LEFT DAAP_T_RIGHT DAAP_T_NEWLINE
+%token DAAP_T_EQUAL DAAP_T_NOT_EQUAL
 
-%type<ival> expression
-%type<fval> mixed_expression
+%type<str> expr
 
-%start calculation
+%destructor { free($$); } <str>
 
 %%
 
-calculation:
-  | calculation mixed_expression DAAP_T_END           { snprintf(result->str, sizeof(result->str), "%g", $2); result->ival = (int)$2; result->fval = $2; }
-  | calculation expression DAAP_T_END                 { snprintf(result->str, sizeof(result->str), "%d", $2); result->ival = $2;      result->fval = (float)$2; }
-;
+query:  expr DAAP_T_NEWLINE DAAP_T_END  { printf("Adding top level %s\n", $1); /* Add expr to AST */ }
+  |     expr DAAP_T_END                 { printf("Adding top level %s\n", $1); /* Add expr to AST */ }
+  ;
 
-mixed_expression: DAAP_T_FLOAT                        { $$ = $1; }
-  | mixed_expression DAAP_T_PLUS mixed_expression     { $$ = $1 + $3; }
-  | mixed_expression DAAP_T_MINUS mixed_expression    { $$ = $1 - $3; }
-  | mixed_expression DAAP_T_MULTIPLY mixed_expression { $$ = $1 * $3; }
-  | mixed_expression DAAP_T_DIVIDE mixed_expression   { $$ = $1 / $3; }
-  | DAAP_T_LEFT mixed_expression DAAP_T_RIGHT         { $$ = $2; }
-  | expression DAAP_T_PLUS mixed_expression           { $$ = $1 + $3; }
-  | expression DAAP_T_MINUS mixed_expression          { $$ = $1 - $3; }
-  | expression DAAP_T_MULTIPLY mixed_expression       { $$ = $1 * $3; }
-  | expression DAAP_T_DIVIDE mixed_expression         { $$ = $1 / $3; }
-  | mixed_expression DAAP_T_PLUS expression           { $$ = $1 + $3; }
-  | mixed_expression DAAP_T_MINUS expression          { $$ = $1 - $3; }
-  | mixed_expression DAAP_T_MULTIPLY expression       { $$ = $1 * $3; }
-  | mixed_expression DAAP_T_DIVIDE expression         { $$ = $1 / $3; }
-  | expression DAAP_T_DIVIDE expression               { $$ = $1 / (float)$3; }
-;
-
-expression: DAAP_T_INT                                { $$ = $1; }
-  | expression DAAP_T_PLUS expression                 { $$ = $1 + $3; }
-  | expression DAAP_T_MINUS expression                { $$ = $1 - $3; }
-  | expression DAAP_T_MULTIPLY expression             { $$ = $1 * $3; }
-  | DAAP_T_LEFT expression DAAP_T_RIGHT               { $$ = $2; }
+expr:
+        DAAP_T_QUOTE DAAP_T_KEY DAAP_T_QUOTE { printf("Found %s\n", $2); $$ = $2; }
 ;
 
 %%

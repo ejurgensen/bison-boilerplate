@@ -4,6 +4,11 @@
 
 #include "daap_parser.h"
 
+#define YYSTYPE DAAP_STYPE
+#include "daap_lexer.h"
+
+extern int daap_lex_cb(char *input, void (*cb)(int, const char *));
+
 struct test_query
 {
   char *input;
@@ -37,15 +42,35 @@ static struct test_query test_queries[] =
     "(((((f.title = 'My Music on thundarr' OR f.media_kind = 1) OR 1 = 0) OR f.media_kind = 128) OR f.media_kind = 65537))"
   },
   {
-    "'daap.songgenre:Kid\'s Audiobooks'",
+    "'daap.songgenre:Kid\\'s Audiobooks'",
     "(f.genre = 'Kid''s Audiobooks')"
+  },
+  {
+    "'daap.songalbum!:'",
+    ""
   },
 };
 
 static void
-daap_test(char *input, char *expected)
+print_token_cb(int token, const char *s)
+{
+  printf("Token %d: %s\n", token, s);
+}
+
+static void
+daap_test_lexer(char *input, char *expected)
+{
+  printf("Lexing %s\n", input);
+  daap_lex_cb(input, print_token_cb);
+  printf("Done lexing\n\n");
+}
+
+static void
+daap_test_parse(char *input, char *expected)
 {
   struct daap_result daap_result;
+
+  return;
 
   if (daap_lex_parse(&daap_result, input) != 0)
     printf("Parsing '%s' failed: %s\n", input, daap_result.errmsg);
@@ -57,7 +82,14 @@ daap_test(char *input, char *expected)
 
 int main(int argc, char *argv[])
 {
-  daap_test(test_queries[0].input, test_queries[0].expected);
+  int testcase = 6;
+
+  daap_debug = 1;
+
+  for (int i = 0; i < sizeof(test_queries)/sizeof(test_queries[0]); i++)
+    daap_test_lexer(test_queries[i].input, test_queries[i].expected);
+
+  daap_test_parse(test_queries[testcase].input, test_queries[testcase].expected);
 
   return 0;
 }
