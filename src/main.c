@@ -92,16 +92,27 @@ daap_test_parse(char *input, char *expected)
 
 int main(int argc, char *argv[])
 {
-  int testcase = 2;
+  int from, to;
 
-  daap_debug = 1;
+  if (argc != 3)
+    goto bad_args;
+  else if ( (from = atoi(argv[1])) > (to = atoi(argv[2])) )
+    goto bad_args;
+  else if ( from < 0 || to >= sizeof(test_queries)/sizeof(test_queries[0]) )
+    goto bad_args;
 
-//  for (int i = 0; i < sizeof(test_queries)/sizeof(test_queries[0]); i++)
-//    daap_test_lexer(test_queries[i].input, test_queries[i].expected);
+  daap_debug = 0;
 
-  daap_test_lexer(test_queries[testcase].input, test_queries[testcase].expected);
-
-  daap_test_parse(test_queries[testcase].input, test_queries[testcase].expected);
+  for (int i = from; i <= to; i++)
+    {
+      daap_test_lexer(test_queries[i].input, test_queries[i].expected);
+      daap_test_parse(test_queries[i].input, test_queries[i].expected);
+      printf("\n");
+    }
 
   return 0;
+
+ bad_args:
+  printf("Bad argumnents\n");
+  return 1;
 }
