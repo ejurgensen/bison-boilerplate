@@ -49,6 +49,18 @@ static struct test_query test_queries[] =
     "'daap.songalbum!:'",
     ""
   },
+  {
+    "('daap.songartist:*cfbnk*' ('com.apple.itunes.mediakind:1','com.apple.itunes.mediakind:32') 'daap.songartist!:')",
+    "((f.album_artist LIKE '%cfbnk%' AND (f.media_kind = 1 OR 1 = 0)))"
+  },
+  {
+    "(('com.apple.itunes.mediakind:4','com.apple.itunes.mediakind:36','com.apple.itunes.mediakind:6','com.apple.itunes.mediakind:7') 'daap.songalbumid:1034227734086706124')",
+    "(((((f.media_kind = 4 OR f.media_kind = 36) OR f.media_kind = 6) OR f.media_kind = 7) AND f.songalbumid = 1034227734086706124))"
+  },
+  {
+    "(('com.apple.itunes.mediakind:1','com.apple.itunes.mediakind:32') 'daap.songartist!:')",
+    "((f.media_kind = 1 OR 1 = 0))"
+  },
 };
 
 static void
@@ -70,8 +82,6 @@ daap_test_parse(char *input, char *expected)
 {
   struct daap_result daap_result;
 
-  return;
-
   if (daap_lex_parse(&daap_result, input) != 0)
     printf("Parsing '%s' failed: %s\n", input, daap_result.errmsg);
   else if (strcmp(expected, daap_result.str) != 0)
@@ -82,12 +92,14 @@ daap_test_parse(char *input, char *expected)
 
 int main(int argc, char *argv[])
 {
-  int testcase = 6;
+  int testcase = 2;
 
   daap_debug = 1;
 
-  for (int i = 0; i < sizeof(test_queries)/sizeof(test_queries[0]); i++)
-    daap_test_lexer(test_queries[i].input, test_queries[i].expected);
+//  for (int i = 0; i < sizeof(test_queries)/sizeof(test_queries[0]); i++)
+//    daap_test_lexer(test_queries[i].input, test_queries[i].expected);
+
+  daap_test_lexer(test_queries[testcase].input, test_queries[testcase].expected);
 
   daap_test_parse(test_queries[testcase].input, test_queries[testcase].expected);
 

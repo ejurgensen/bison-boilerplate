@@ -90,28 +90,37 @@ struct daap_result {
 }
 
 %union {
-  int ival;
   char *str;
 }
 
 %token DAAP_T_END 0
-%token<ival> DAAP_T_INT
 %token<str> DAAP_T_KEY DAAP_T_VALUE
-%token DAAP_T_QUOTE DAAP_T_AND DAAP_T_OR DAAP_T_LEFT DAAP_T_RIGHT DAAP_T_NEWLINE
-%token DAAP_T_EQUAL DAAP_T_NOT_EQUAL
-
-%type<str> expr
-
-%destructor { free($$); } <str>
+%token DAAP_T_QUOTE DAAP_T_LEFT DAAP_T_RIGHT DAAP_T_NEWLINE
+%left DAAP_T_EQUAL DAAP_T_NOT_EQUAL DAAP_T_AND DAAP_T_OR
 
 %%
 
-query:  expr DAAP_T_NEWLINE DAAP_T_END  { printf("Adding top level %s\n", $1); /* Add expr to AST */ }
-  |     expr DAAP_T_END                 { printf("Adding top level %s\n", $1); /* Add expr to AST */ }
+query: crit DAAP_T_NEWLINE DAAP_T_END  { printf("FINAL\n"); }
+  | crit DAAP_T_END             { printf("FINAL\n"); }
   ;
 
-expr:
-        DAAP_T_QUOTE DAAP_T_KEY DAAP_T_QUOTE { printf("Found %s\n", $2); $$ = $2; }
+crit: DAAP_T_LEFT crit DAAP_T_RIGHT { printf("ENCLOSE "); }
+;
+
+crit: DAAP_T_KEY { printf("KEY %s ", $1); }
+  | DAAP_T_VALUE { printf("VAL %s ", $1); }
+;
+
+crit: crit DAAP_T_EQUAL crit { printf("EQUAL "); }
+  | crit DAAP_T_NOT_EQUAL crit { printf("NOT_EQUAL "); }
+  | crit DAAP_T_NOT_EQUAL { printf("NOT_EQUAL "); }
+;
+
+crit: DAAP_T_QUOTE crit DAAP_T_QUOTE { printf("EXPR "); }
+;
+
+crit: crit DAAP_T_AND crit { printf("AND "); }
+  | crit DAAP_T_OR crit { printf("OR "); }
 ;
 
 %%
