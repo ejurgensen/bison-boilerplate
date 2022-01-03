@@ -79,9 +79,7 @@ int daap_lex_parse(struct daap_result *result, char *input);
     int type;
     struct ast *l;
     struct ast *r;
-
-    char *key;
-    char *val;
+    void *data;
   };
 
   static struct ast * new_ast(int type, struct ast *l, struct ast *r)
@@ -91,47 +89,33 @@ int daap_lex_parse(struct daap_result *result, char *input);
     a->type = type;
     a->l = l;
     a->r = r;
-
     return a;
   }
 
-  static struct ast * new_crit(int type, char *key, char *val)
+  /* Note *data is expected to be freeable with regular free() */
+  static struct ast * new_data(int type, void *data)
   {
     struct ast *a = calloc(1, sizeof(struct ast));
 
     a->type = type;
-    a->key = key;
-    a->val = val;
-
+    a->data = data;
     return a;
   }
 
-  static void eval_ast(struct daap_result *result, struct ast *a)
+  static void free_ast(struct ast *a)
   {
-    switch(a->type)
-    {
-      case DAAP_T_OR:
-      case DAAP_T_AND:
-        eval_ast(result, a->l);
-        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, a->type == DAAP_T_OR ? " OR " : " AND ");
-        eval_ast(result, a->r);
-        break;
-      case DAAP_T_LEFT:
-        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "(");
-        eval_ast(result, a->l);
-        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, ")");
-        break;
-      case DAAP_T_EQUAL:
-        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s = %s", a->key, a->val);
-        break;
-      case DAAP_T_NOT_EQUAL:
-        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s != %s", a->key, a->val ? a->val : "\"\"");
-        break;
-      default:
-        printf("ERROR: %d", a->type);
-    }
+    if (!a)
+      return;
+
+    free_ast(a->l);
+    free_ast(a->r);
+    free(a->data);
+    free(a);
   }
 }
+
+%destructor { free_ast($$); } <ast>
+
 
 /* ========================= NON-BOILERPLATE SECTION =========================*/
 
@@ -151,6 +135,48 @@ struct daap_result {
 };
 }
 
+%code {
+static char * dmap_map(char *tag)
+{
+  return "dummytag";
+}
+
+/* Creates the parsing result from the AST */
+static void eval_ast(struct daap_result *result, struct ast *a) {
+  if (!a)
+    return;
+
+  switch (a->type)
+    {
+      case DAAP_T_OR:
+      case DAAP_T_AND:
+        eval_ast(result, a->l);
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, a->type == DAAP_T_OR ? " OR " : " AND ");
+        eval_ast(result, a->r);
+        break;
+      case DAAP_T_KEY:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", dmap_map((char *)a->data));
+        break;
+      case DAAP_T_VALUE:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", a->data ? (char *)a->data : "\"\"");
+        break;
+      case DAAP_T_EQUAL:
+      case DAAP_T_NOT_EQUAL:
+        eval_ast(result, a->l);
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, a->type == DAAP_T_EQUAL ? " = " : " != ");
+        eval_ast(result, a->r);
+        break;
+      case DAAP_T_LEFT:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "(");
+        eval_ast(result, a->l);
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, ")");
+        break;
+      default:
+        printf("ERROR: %d", a->type);
+  }
+}
+}
+
 %union {
   char *str;
   struct ast *ast;
@@ -166,8 +192,8 @@ struct daap_result {
 %%
 
 query:
-    expr DAAP_T_END                { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); }
-  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); }
+    expr DAAP_T_END                { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); free_ast($1); }
+  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); free_ast($1); }
   ;
 
 expr:
@@ -177,9 +203,9 @@ expr:
 ;
 
 expr:
-    DAAP_T_QUOTE DAAP_T_KEY DAAP_T_EQUAL DAAP_T_VALUE DAAP_T_QUOTE     { printf("CRIT %s = %s ", $2, $4); $$ = new_crit(DAAP_T_EQUAL, $2, $4); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_VALUE DAAP_T_QUOTE { printf("CRIT %s != %s ", $2, $4); $$ = new_crit(DAAP_T_NOT_EQUAL, $2, $4); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_QUOTE              { printf("CRIT %s != * ", $2); $$ = new_crit(DAAP_T_NOT_EQUAL, $2, NULL); }
+    DAAP_T_QUOTE DAAP_T_KEY DAAP_T_EQUAL DAAP_T_VALUE DAAP_T_QUOTE     { printf("CRIT %s = %s ", $2, $4); $$ = new_ast(DAAP_T_EQUAL, new_data(DAAP_T_KEY, $2), new_data(DAAP_T_VALUE, $4)); }
+  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_VALUE DAAP_T_QUOTE { printf("CRIT %s != %s ", $2, $4); $$ = new_ast(DAAP_T_NOT_EQUAL, new_data(DAAP_T_KEY, $2), new_data(DAAP_T_VALUE, $4)); }
+  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_QUOTE              { printf("CRIT %s != * ", $2); $$ = new_ast(DAAP_T_NOT_EQUAL, new_data(DAAP_T_KEY, $2), new_data(DAAP_T_VALUE, NULL)); }
 ;
 
 %%

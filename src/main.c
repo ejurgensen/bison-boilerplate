@@ -87,7 +87,7 @@ daap_test_parse(char *input, char *expected)
   if (daap_lex_parse(&daap_result, input) == 0)
     {
       printf("=== RESULT ===\n%s\n", daap_result.str);
-      if (strcmp(expected, daap_result.str) != 0)
+      if (strcmp(expected, daap_result.str) == 0)
         printf("=== SUCCES ===\n");
       else
         printf("==! UNEXPECTED !==\n");
