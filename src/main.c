@@ -82,12 +82,18 @@ daap_test_parse(char *input, char *expected)
 {
   struct daap_result daap_result;
 
-  if (daap_lex_parse(&daap_result, input) != 0)
-    printf("Parsing '%s' failed: %s\n", input, daap_result.errmsg);
-  else if (strcmp(expected, daap_result.str) != 0)
-    printf("Unexpected parse result of '%s': %s\n", input, daap_result.str);
+  printf("=== INPUT ===\n%s\n", input);
+
+  if (daap_lex_parse(&daap_result, input) == 0)
+    {
+      printf("=== RESULT ===\n%s\n", daap_result.str);
+      if (strcmp(expected, daap_result.str) != 0)
+        printf("=== SUCCES ===\n");
+      else
+        printf("==! UNEXPECTED !==\n");
+    }
   else
-    printf("Succesful parse result of '%s': '%s'\n", input, daap_result.str);
+    printf("==! FAILED !==\n");
 }
 
 int main(int argc, char *argv[])

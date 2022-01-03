@@ -68,6 +68,69 @@ int daap_lex_parse(struct daap_result *result, char *input);
   {
     snprintf(result->errmsg, sizeof(result->errmsg), "%s", msg);
   }
+
+}
+
+/* ============ ABSTRACT SYNTAX TREE (AST) BOILERPLATE SECTION ===============*/
+
+%code {
+  struct ast
+  {
+    int type;
+    struct ast *l;
+    struct ast *r;
+
+    char *key;
+    char *val;
+  };
+
+  static struct ast * new_ast(int type, struct ast *l, struct ast *r)
+  {
+    struct ast *a = calloc(1, sizeof(struct ast));
+
+    a->type = type;
+    a->l = l;
+    a->r = r;
+
+    return a;
+  }
+
+  static struct ast * new_crit(int type, char *key, char *val)
+  {
+    struct ast *a = calloc(1, sizeof(struct ast));
+
+    a->type = type;
+    a->key = key;
+    a->val = val;
+
+    return a;
+  }
+
+  static void eval_ast(struct daap_result *result, struct ast *a)
+  {
+    switch(a->type)
+    {
+      case DAAP_T_OR:
+      case DAAP_T_AND:
+        eval_ast(result, a->l);
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, a->type == DAAP_T_OR ? " OR " : " AND ");
+        eval_ast(result, a->r);
+        break;
+      case DAAP_T_LEFT:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "(");
+        eval_ast(result, a->l);
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, ")");
+        break;
+      case DAAP_T_EQUAL:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s = %s", a->key, a->val);
+        break;
+      case DAAP_T_NOT_EQUAL:
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s != %s", a->key, a->val ? a->val : "\"\"");
+        break;
+      default:
+        printf("ERROR: %d", a->type);
+    }
+  }
 }
 
 /* ========================= NON-BOILERPLATE SECTION =========================*/
@@ -83,14 +146,14 @@ int daap_lex_parse(struct daap_result *result, char *input);
 %code requires {
 struct daap_result {
   char str[1024];
-  int ival;
-  float fval;
+  int offset;
   char errmsg[128];
 };
 }
 
 %union {
   char *str;
+  struct ast *ast;
 }
 
 %token DAAP_T_END 0
@@ -98,23 +161,25 @@ struct daap_result {
 %token DAAP_T_EQUAL DAAP_T_NOT_EQUAL DAAP_T_QUOTE DAAP_T_LEFT DAAP_T_RIGHT DAAP_T_NEWLINE
 %left DAAP_T_AND DAAP_T_OR
 
+%type <ast> expr
+
 %%
 
 query:
-    expr DAAP_T_END                { printf("FINAL\n"); result->str[0] = '\0'; }
-  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n");  result->str[0] = '\0'; }
+    expr DAAP_T_END                { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); }
+  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); eval_ast(result, $1); }
   ;
 
 expr:
-    expr DAAP_T_AND expr           { printf("AND "); }
-  | expr DAAP_T_OR expr            { printf("OR "); }
-  | DAAP_T_LEFT expr DAAP_T_RIGHT  { printf("GROUP "); }
+    expr DAAP_T_AND expr           { printf("AND "); $$ = new_ast(DAAP_T_AND, $1, $3); }
+  | expr DAAP_T_OR expr            { printf("OR "); $$ = new_ast(DAAP_T_OR, $1, $3); }
+  | DAAP_T_LEFT expr DAAP_T_RIGHT  { printf("GROUP "); $$ = new_ast(DAAP_T_LEFT, $2, NULL); }
 ;
 
 expr:
-    DAAP_T_QUOTE DAAP_T_KEY DAAP_T_EQUAL DAAP_T_VALUE DAAP_T_QUOTE     { printf("CRIT %s = %s ", $2, $4); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_VALUE DAAP_T_QUOTE { printf("CRIT %s != %s ", $2, $4); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_QUOTE              { printf("CRIT %s != * ", $2); }
+    DAAP_T_QUOTE DAAP_T_KEY DAAP_T_EQUAL DAAP_T_VALUE DAAP_T_QUOTE     { printf("CRIT %s = %s ", $2, $4); $$ = new_crit(DAAP_T_EQUAL, $2, $4); }
+  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_VALUE DAAP_T_QUOTE { printf("CRIT %s != %s ", $2, $4); $$ = new_crit(DAAP_T_NOT_EQUAL, $2, $4); }
+  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT_EQUAL DAAP_T_QUOTE              { printf("CRIT %s != * ", $2); $$ = new_crit(DAAP_T_NOT_EQUAL, $2, NULL); }
 ;
 
 %%
