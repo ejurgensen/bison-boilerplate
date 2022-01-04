@@ -3,11 +3,7 @@
 #include <string.h>
 
 #include "daap_parser.h"
-
-#define YYSTYPE DAAP_STYPE
-#include "daap_lexer.h"
-
-extern int daap_lex_cb(char *input, void (*cb)(int, const char *));
+#include "smartpl_parser.h"
 
 struct test_query
 {
@@ -15,7 +11,19 @@ struct test_query
   char *expected;
 };
 
-static struct test_query test_queries[] =
+static struct test_query smartpl_test_queries[] =
+{
+  {
+    "\"techno\" { genre includes \"techno\" and artist includes \"zombie\" }",
+    ""
+  },
+  {
+    "\"techno\" { genre includes \"techno\" and artist includes \"zombie\" } \"techno\" { genre includes \"techno\" and artist includes \"zombie\" }",
+    ""
+  },
+};
+
+static struct test_query daap_test_queries[] =
 {
   {
     "'com.apple.itunes.extended-media-kind:32'",
@@ -78,16 +86,43 @@ daap_test_lexer(char *input, char *expected)
 }
 
 static void
+smartpl_test_lexer(char *input, char *expected)
+{
+  printf("Lexing %s\n", input);
+  smartpl_lex_cb(input, print_token_cb);
+  printf("Done lexing\n\n");
+}
+
+static void
 daap_test_parse(char *input, char *expected)
 {
-  struct daap_result daap_result;
+  struct daap_result result;
 
   printf("=== INPUT ===\n%s\n", input);
 
-  if (daap_lex_parse(&daap_result, input) == 0)
+  if (daap_lex_parse(&result, input) == 0)
     {
-      printf("=== RESULT ===\n%s\n", daap_result.str);
-      if (strcmp(expected, daap_result.str) == 0)
+      printf("=== RESULT ===\n%s\n", result.str);
+      if (strcmp(expected, result.str) == 0)
+        printf("=== SUCCES ===\n");
+      else
+        printf("==! UNEXPECTED !==\n");
+    }
+  else
+    printf("==! FAILED !==\n");
+}
+
+static void
+smartpl_test_parse(char *input, char *expected)
+{
+  struct smartpl_result result;
+
+  printf("=== INPUT ===\n%s\n", input);
+
+  if (smartpl_lex_parse(&result, input) == 0)
+    {
+      printf("=== RESULT ===\n%s\n", result.str);
+      if (strcmp(expected, result.str) == 0)
         printf("=== SUCCES ===\n");
       else
         printf("==! UNEXPECTED !==\n");
@@ -104,15 +139,21 @@ int main(int argc, char *argv[])
     goto bad_args;
   else if ( (from = atoi(argv[1])) > (to = atoi(argv[2])) )
     goto bad_args;
-  else if ( from < 0 || to >= sizeof(test_queries)/sizeof(test_queries[0]) )
-    goto bad_args;
 
-  daap_debug = 0;
-
+  // daap_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      daap_test_lexer(test_queries[i].input, test_queries[i].expected);
-      daap_test_parse(test_queries[i].input, test_queries[i].expected);
+      daap_test_lexer(daap_test_queries[i].input, daap_test_queries[i].expected);
+      daap_test_parse(daap_test_queries[i].input, daap_test_queries[i].expected);
+      printf("\n");
+    }
+
+
+  // smartpl_debug = 1;
+  for (int i = from; i <= to; i++)
+    {
+      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      smartpl_test_parse(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       printf("\n");
     }
 

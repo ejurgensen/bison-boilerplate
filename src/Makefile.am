@@ -1,6 +1,6 @@
 # Sources should have _lexer.l and _parser.y suffixes
-LEXER_SRC  = daap_lexer.l
-PARSER_SRC = daap_parser.y
+LEXER_SRC  = daap_lexer.l smartpl_lexer.l
+PARSER_SRC = daap_parser.y smartpl_parser.y
 
 # This should ensure the headers are built first. automake knows how to make
 # parser headers, but doesn't know how to do that for flex. So instead we set

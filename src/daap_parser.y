@@ -21,17 +21,37 @@
    shouldn't need to know about yyscan_t */
 %param {void *scanner}
 
-/* Convenience function for caller to use instead of interfacing with lexer and
-   parser directly */
 %code provides {
+/* Convenience functions for caller to use instead of interfacing with lexer and
+   parser directly */
+int daap_lex_cb(char *input, void (*cb)(int, const char *));
 int daap_lex_parse(struct daap_result *result, char *input);
 }
 
 /* Implementation of the convenience function and the parsing error function
    required by Bison */
 %code {
-  #define YYSTYPE DAAP_STYPE
   #include "daap_lexer.h"
+
+  int daap_lex_cb(char *input, void (*cb)(int, const char *))
+  {
+    int ret;
+    yyscan_t scanner;
+    YY_BUFFER_STATE buf;
+    YYSTYPE val;
+
+    if ((ret = daap_lex_init(&scanner)) != 0)
+      return ret;
+
+    buf = daap__scan_string(input, scanner);
+
+    while ((ret = daap_lex(&val, scanner)) > 0)
+      cb(ret, daap_get_text(scanner));
+
+    daap__delete_buffer(buf, scanner);
+    daap_lex_destroy(scanner);
+    return 0;
+  }
 
   int daap_lex_parse(struct daap_result *result, char *input)
   {
@@ -145,6 +165,8 @@ static char * dmap_map(char *tag)
 static void eval_ast(struct daap_result *result, struct ast *a) {
   if (!a)
     return;
+
+  /* TODO Error handling, check lengths */
 
   switch (a->type)
     {

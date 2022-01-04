@@ -56,22 +56,3 @@ re_operator (!?[:@])
 
 %%
 
-int daap_lex_cb(char *input, void (*cb)(int, const char *))
-{
-  int ret;
-  yyscan_t scanner;
-  YY_BUFFER_STATE buf;
-  YYSTYPE val;
-
-  if ((ret = daap_lex_init(&scanner)) != 0)
-    return ret;
-
-  buf = daap__scan_string(input, scanner);
-
-  while ((ret = daap_lex(&val, scanner)) > 0)
-    cb(ret, daap_get_text(scanner));
-
-  daap__delete_buffer(buf, scanner);
-  daap_lex_destroy(scanner);
-  return 0;
-}
