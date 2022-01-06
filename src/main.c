@@ -53,6 +53,10 @@ static struct test_query smartpl_test_queries[] =
     "\"Recently played audiobooks\" { time_played after last week and media_kind is audiobook }",
     ""
   },
+  {
+    "\"query\" { time_added after 8 weeks ago and media_kind is music having track_count > 3 order by time_added desc }",
+    ""
+  },
 };
 
 static struct test_query daap_test_queries[] =
@@ -153,8 +157,13 @@ smartpl_test_parse(char *input, char *expected)
 
   if (smartpl_lex_parse(&result, input) == 0)
     {
-      printf("=== RESULT ===\n%s\n", result.str);
-      if (strcmp(expected, result.str) == 0)
+      printf("=== RESULT ===\n");
+      printf(".title: %s\n", result.title);
+      printf(".where: %s\n", result.where);
+      printf(".having: %s\n", result.having);
+      printf(".order: %s\n", result.order);
+      printf(".limit: %d\n", result.limit);
+      if (strcmp(expected, result.where) == 0)
         printf("=== SUCCES ===\n");
       else
         printf("==! UNEXPECTED !==\n");

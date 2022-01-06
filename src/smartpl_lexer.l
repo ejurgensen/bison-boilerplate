@@ -51,10 +51,14 @@ album          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 title          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 genre          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 composer       { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
-comment        { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 path           { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 type           { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 grouping       { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+artist_id      { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+songartistid   { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; } /* TODO isn't this an int? */
+songalbumid    { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+codectype      { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+comment        { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 
 play_count     { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 skip_count     { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
@@ -63,11 +67,20 @@ year           { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 compilation    { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 track          { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 disc           { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+bitrate        { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+bits_per_sample { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+samplerate     { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+song_length    { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+usermark       { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 
 time_added     { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
 time_modified  { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
 time_played    { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
 time_skipped   { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
+date_released  { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
+
+track_count    { yylval->str = strdup(yytext); return SMARTPL_T_GROUPTAG; }
+album_count    { yylval->str = strdup(yytext); return SMARTPL_T_GROUPTAG; }
 
 data_kind      { yylval->str = strdup(yytext); return SMARTPL_T_DATAKINDTAG; }
 media_kind     { yylval->str = strdup(yytext); return SMARTPL_T_MEDIAKINDTAG; }
@@ -85,10 +98,11 @@ audiobook      { yylval->ival = 3; return SMARTPL_T_MEDIAKIND; }
 tvshow         { yylval->ival = 4; return SMARTPL_T_MEDIAKIND; }
 
 random         { return SMARTPL_T_RANDOM; }
-limit          { return SMARTPL_T_LIMIT; }
+having         { return SMARTPL_T_HAVING; }
 order\ by      { return SMARTPL_T_ORDERBY; }
 desc           { return SMARTPL_T_ORDER_DESC; }
 asc            { return SMARTPL_T_ORDER_ASC; }
+limit          { return SMARTPL_T_LIMIT; }
 
 {yyyymmdd}               { yylval->ival = l_convertyyyymmdd(yytext); return (SMARTPL_T_DATE); }
 today                    { yylval->ival = time(NULL); return (SMARTPL_T_DATE); }

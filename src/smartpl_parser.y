@@ -168,36 +168,42 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
 
 /* Definition of struct that will hold the parsing result */
 %code requires {
-struct smartpl_result {
-  char str[1024];
+struct result_part {
+  char str[512];
   int offset;
+};
+
+struct smartpl_result {
+  struct result_part where_part;
+  struct result_part order_part;
+  struct result_part having_part;
+  char title[128];
+  const char *where; // Points to where_part.str
+  const char *order; // Points to order_part.str
+  const char *having; // Points to having_part.str
+  int limit;
   char errmsg[128];
 };
 }
 
 %code {
 enum sql_append_type {
-  SQL_APPEND_PLAYLIST,
   SQL_APPEND_OPERATOR,
   SQL_APPEND_OPERATOR_LIKE,
+  SQL_APPEND_FIELD,
   SQL_APPEND_STR,
+  SQL_APPEND_QUOTED,
   SQL_APPEND_INT,
   SQL_APPEND_ORDER,
   SQL_APPEND_GROUP,
 };
 
-static void sql_from_ast(struct smartpl_result *result, struct ast *a);
+static const char * sql_from_ast(struct result_part *result, struct ast *a);
 
-static void sql_append_recursive(struct smartpl_result *result, struct ast *a, const char *op, const char *op_not, bool is_not, enum sql_append_type append_type)
+static void sql_append_recursive(struct result_part *result, struct ast *a, const char *op, const char *op_not, bool is_not, enum sql_append_type append_type)
 {
   switch (append_type)
   {
-    case SQL_APPEND_PLAYLIST:
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "playlist = \"");
-      sql_from_ast(result, a->l);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "\" AND ");
-      sql_from_ast(result, a->r);
-      break;
     case SQL_APPEND_OPERATOR:
       sql_from_ast(result, a->l);
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s ", is_not ? op_not : op);
@@ -209,10 +215,20 @@ static void sql_append_recursive(struct smartpl_result *result, struct ast *a, c
       sql_from_ast(result, a->r);
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%%");
       break;
+    case SQL_APPEND_FIELD:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "f.%s", (char *)a->data);
+      break;
     case SQL_APPEND_STR:
       assert(a->l == NULL);
       assert(a->r == NULL);
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", (char *)a->data);
+      break;
+    case SQL_APPEND_QUOTED:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "\"%s\"", (char *)a->data);
       break;
     case SQL_APPEND_INT:
       assert(a->l == NULL);
@@ -222,7 +238,7 @@ static void sql_append_recursive(struct smartpl_result *result, struct ast *a, c
     case SQL_APPEND_ORDER:
       assert(a->l == NULL);
       assert(a->r == NULL);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s %s", (char *)a->data, op);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "f.%s %s", (char *)a->data, is_not ? op_not : op);
       break;
     case SQL_APPEND_GROUP:
       assert(a->r == NULL);
@@ -234,9 +250,9 @@ static void sql_append_recursive(struct smartpl_result *result, struct ast *a, c
 }
 
 /* Creates the parsing result from the AST */
-static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
+static const char * sql_from_ast(struct result_part *result, struct ast *a) {
   if (!a)
-    return;
+    return NULL;
 
   bool is_not = (a->type & 0x80000000);
 
@@ -246,8 +262,6 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 
   switch (a->type)
   {
-    case SMARTPL_T_PL:
-      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_PLAYLIST); break;
     case SMARTPL_T_EQUALS:
       sql_append_recursive(result, a, "=", "!=", is_not, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_LESS:
@@ -270,31 +284,40 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
       sql_append_recursive(result, a, "AND", "AND NOT", is_not, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_OR:
       sql_append_recursive(result, a, "OR", "OR NOT", is_not, SQL_APPEND_OPERATOR); break;
-    case SMARTPL_T_ORDERBY:
-      sql_append_recursive(result, a, "ORDER BY", NULL, 0, SQL_APPEND_OPERATOR); break;
-    case SMARTPL_T_LIMIT:
-      sql_append_recursive(result, a, "LIMIT", NULL, 0, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_QUOTED:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_QUOTED); break;
+    case SMARTPL_T_GROUPTAG:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_STR); break;
     case SMARTPL_T_STRTAG:
     case SMARTPL_T_INTTAG:
     case SMARTPL_T_DATETAG:
     case SMARTPL_T_DATAKINDTAG:
     case SMARTPL_T_MEDIAKINDTAG:
-      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_STR); break;
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_FIELD); break;
     case SMARTPL_T_NUM:
     case SMARTPL_T_DATAKIND:
     case SMARTPL_T_MEDIAKIND:
     case SMARTPL_T_DATE:
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_INT); break;
-    case SMARTPL_T_ORDER_ASC:
-      sql_append_recursive(result, a, "ASC", NULL, 0, SQL_APPEND_ORDER); break;
-    case SMARTPL_T_ORDER_DESC:
-      sql_append_recursive(result, a, "DESC", NULL, 0, SQL_APPEND_ORDER); break;
+    case SMARTPL_T_ORDERBY:
+      sql_append_recursive(result, a, "ASC", "DESC", is_not, SQL_APPEND_ORDER); break;
     case SMARTPL_T_LEFT:
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_GROUP); break;
     default:
       printf("MISSING TAG: %d\n", a->type);
   }
+
+  return result->str;
+}
+
+static void result_set(struct smartpl_result *result, const char *title, struct ast *criteria, struct ast *having, struct ast *order, struct ast *limit)
+{
+  memset(result, 0, sizeof(struct smartpl_result));
+  snprintf(result->title, sizeof(result->title), "%s", title);
+  result->where  = sql_from_ast(&result->where_part, criteria);
+  result->having = sql_from_ast(&result->having_part, having);
+  result->order  = sql_from_ast(&result->order_part, order);
+  result->limit  = limit ? limit->ival : 0;
 }
 }
 
@@ -304,36 +327,34 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
   struct ast *ast;
 }
 
-%token SMARTPL_T_PL
-
+/* A string that was quoted. Quotes were stripped by lexer. */
 %token <str> SMARTPL_T_QUOTED
 
-/* THe semantic value holds the actual name of the field */
+/* The semantic value holds the actual name of the field */
 %token <str> SMARTPL_T_STRTAG
 %token <str> SMARTPL_T_INTTAG
 %token <str> SMARTPL_T_DATETAG
 %token <str> SMARTPL_T_DATAKINDTAG
 %token <str> SMARTPL_T_MEDIAKINDTAG
+%token <str> SMARTPL_T_GROUPTAG
 
-%token SMARTPL_T_LIMIT
+%token SMARTPL_T_HAVING
 %token SMARTPL_T_ORDERBY
 %token SMARTPL_T_ORDER_ASC
 %token SMARTPL_T_ORDER_DESC
+%token SMARTPL_T_LIMIT
 %token SMARTPL_T_RANDOM
-
 %token SMARTPL_T_LEFT
 %token SMARTPL_T_RIGHT
+%token SMARTPL_T_OR
+%token SMARTPL_T_AND
+%token SMARTPL_T_NOT
 
 %token <ival> SMARTPL_T_NUM
 %token <ival> SMARTPL_T_DATE
 %token <ival> SMARTPL_T_INTERVAL
-
 %token <ival> SMARTPL_T_DATAKIND
 %token <ival> SMARTPL_T_MEDIAKIND
-
-%token SMARTPL_T_OR
-%token SMARTPL_T_AND
-%token SMARTPL_T_NOT
 
 /* The below are only ival so we can set intbool, datebool and strbool via the
    default rule for semantic values, i.e. $$ = $1. The semantic value (ival) is
@@ -351,10 +372,9 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 
 %left SMARTPL_T_OR SMARTPL_T_AND
 
-%type <ast> playlist
-%type <ast> expression
 %type <ast> criteria
 %type <ast> predicate
+%type <ast> having
 %type <ast> order
 %type <ast> limit
 %type <ival> interval
@@ -366,17 +386,15 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 
 %%
 
-playlistlist: playlist { memset(result, 0, sizeof(struct smartpl_result)); sql_from_ast(result, $1); ast_free($1); }
-;
-
-playlist: SMARTPL_T_QUOTED '{' expression '}'      { $$ = ast_new(SMARTPL_T_PL, ast_data(SMARTPL_T_QUOTED, $1), $3); }
-;
-
-expression: criteria
-| criteria order limit { $$ = ast_new(SMARTPL_T_ORDERBY, $1, ast_new(SMARTPL_T_LIMIT, $2, $3)); };
-| criteria limit order { $$ = ast_new(SMARTPL_T_ORDERBY, $1, ast_new(SMARTPL_T_LIMIT, $3, $2)); };
-| criteria order { $$ = ast_new(SMARTPL_T_ORDERBY, $1, $2); }
-| criteria limit { $$ = ast_new(SMARTPL_T_LIMIT, $1, $2); }
+playlist:
+  SMARTPL_T_QUOTED '{' criteria having order limit '}' { result_set(result, $1, $3, $4, $5, $6); }
+| SMARTPL_T_QUOTED '{' criteria having order '}'       { result_set(result, $1, $3, $4, $5, NULL); }
+| SMARTPL_T_QUOTED '{' criteria having limit '}'       { result_set(result, $1, $3, $4, NULL, $5); }
+| SMARTPL_T_QUOTED '{' criteria having '}'             { result_set(result, $1, $3, $4, NULL, NULL); }
+| SMARTPL_T_QUOTED '{' criteria order limit '}'        { result_set(result, $1, $3, NULL, $4, $5); }
+| SMARTPL_T_QUOTED '{' criteria order '}'              { result_set(result, $1, $3, NULL, $4, NULL); }
+| SMARTPL_T_QUOTED '{' criteria limit '}'              { result_set(result, $1, $3, NULL, NULL, $4); }
+| SMARTPL_T_QUOTED '{' criteria '}'                    { result_set(result, $1, $3, NULL, NULL, NULL); }
 ;
 
 criteria: criteria SMARTPL_T_AND criteria  { $$ = ast_new(SMARTPL_T_AND, $1, $3); }
@@ -421,16 +439,18 @@ dateval: SMARTPL_T_DATE
 | interval SMARTPL_T_AGO            { $$ = time(NULL) - $1; }
 ;
 
-order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_INTTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_DATETAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
-| order SMARTPL_T_ORDER_ASC { struct ast *a = $1; a->type = SMARTPL_T_ORDER_ASC; $$ = $1; }
-| order SMARTPL_T_ORDER_DESC { struct ast *a = $1; a->type = SMARTPL_T_ORDER_DESC; $$ = $1; }
+having: SMARTPL_T_HAVING SMARTPL_T_GROUPTAG intbool SMARTPL_T_NUM { $$ = ast_new($3, ast_data(SMARTPL_T_GROUPTAG, $2), ast_int(SMARTPL_T_NUM, $4)); }
+
+order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_INTTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATETAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| order SMARTPL_T_ORDER_ASC { struct ast *a = $1; a->type = SMARTPL_T_ORDERBY; $$ = $1; }
+| order SMARTPL_T_ORDER_DESC { struct ast *a = $1; a->type |= 0x80000000; $$ = $1; }
 ;
 
-limit: SMARTPL_T_LIMIT SMARTPL_T_NUM { $$ = ast_int(SMARTPL_T_NUM, $2); }
+limit: SMARTPL_T_LIMIT SMARTPL_T_NUM { $$ = ast_int(SMARTPL_T_LIMIT, $2); }
 ;
 
 %%
