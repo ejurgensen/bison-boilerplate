@@ -122,19 +122,19 @@ int daap_lex_parse(struct daap_result *result, char *input);
     return a;
   }
 
-  static void free_ast(struct ast *a)
+  static void ast_free(struct ast *a)
   {
     if (!a)
       return;
 
-    free_ast(a->l);
-    free_ast(a->r);
+    ast_free(a->l);
+    ast_free(a->r);
     free(a->data);
     free(a);
   }
 }
 
-%destructor { free_ast($$); } <ast>
+%destructor { ast_free($$); } <ast>
 
 
 /* ========================= NON-BOILERPLATE SECTION =========================*/
@@ -214,8 +214,8 @@ static void sql_from_ast(struct daap_result *result, struct ast *a) {
 %%
 
 query:
-    expr DAAP_T_END                { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); sql_from_ast(result, $1); free_ast($1); }
-  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); sql_from_ast(result, $1); free_ast($1); }
+    expr DAAP_T_END                { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); sql_from_ast(result, $1); ast_free($1); }
+  | expr DAAP_T_NEWLINE DAAP_T_END { printf("FINAL\n"); memset(result, 0, sizeof(struct daap_result)); sql_from_ast(result, $1); ast_free($1); }
   ;
 
 expr:

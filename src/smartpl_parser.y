@@ -139,19 +139,19 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
     return a;
   }
 
-  __attribute__((unused)) static void free_ast(struct ast *a)
+  __attribute__((unused)) static void ast_free(struct ast *a)
   {
     if (!a)
       return;
 
-    free_ast(a->l);
-    free_ast(a->r);
+    ast_free(a->l);
+    ast_free(a->r);
     free(a->data);
     free(a);
   }
 }
 
-%destructor { free_ast($$); } <ast>
+%destructor { ast_free($$); } <ast>
 
 
 /* ========================= NON-BOILERPLATE SECTION =========================*/
@@ -176,15 +176,61 @@ struct smartpl_result {
 }
 
 %code {
+enum sql_append_type {
+  SQL_APPEND_PLAYLIST,
+  SQL_APPEND_OPERATOR,
+  SQL_APPEND_OPERATOR_LIKE,
+  SQL_APPEND_STR,
+  SQL_APPEND_INT,
+  SQL_APPEND_ORDER,
+  SQL_APPEND_GROUP,
+};
 
-static void sql_append_str(struct smartpl_result *result, const char *s)
-{
-  result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", s);
-}
+static void sql_from_ast(struct smartpl_result *result, struct ast *a);
 
-static void sql_append_int(struct smartpl_result *result, int d)
+static void sql_append_recursive(struct smartpl_result *result, struct ast *a, const char *op, const char *op_not, bool is_not, enum sql_append_type append_type)
 {
-  result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%d", d);
+  switch (append_type)
+  {
+    case SQL_APPEND_PLAYLIST:
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "playlist = \"");
+      sql_from_ast(result, a->l);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "\" AND ");
+      sql_from_ast(result, a->r);
+      break;
+    case SQL_APPEND_OPERATOR:
+      sql_from_ast(result, a->l);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s ", is_not ? op_not : op);
+      sql_from_ast(result, a->r);
+      break;
+    case SQL_APPEND_OPERATOR_LIKE:
+      sql_from_ast(result, a->l);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s %%", is_not ? op_not : op);
+      sql_from_ast(result, a->r);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%%");
+      break;
+    case SQL_APPEND_STR:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", (char *)a->data);
+      break;
+    case SQL_APPEND_INT:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%d", a->ival);
+      break;
+    case SQL_APPEND_ORDER:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s %s", (char *)a->data, op);
+      break;
+    case SQL_APPEND_GROUP:
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "(");
+      sql_from_ast(result, a->l);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, ")");
+      break;
+  }
 }
 
 /* Creates the parsing result from the AST */
@@ -192,68 +238,62 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
   if (!a)
     return;
 
-  bool negative = (a->type & 0x80000000);
-  /* TODO Error handling, check lengths */
+  bool is_not = (a->type & 0x80000000);
 
-//  printf("%d\n", a->type);
+  a->type &= ~0x80000000;
+
+  /* TODO Error handling, check lengths */
 
   switch (a->type)
   {
     case SMARTPL_T_PL:
-      sql_append_str(result, "playlist = ");
-      sql_from_ast(result, a->l);
-      sql_append_str(result, " AND (");
-      sql_from_ast(result, a->r);
-      sql_append_str(result, ")");
-      break;
-    case SMARTPL_T_AND:
-      sql_append_str(result, "(");
-      sql_from_ast(result, a->l);
-      sql_append_str(result, negative ? " AND NOT " : " AND ");
-      sql_from_ast(result, a->r);
-      sql_append_str(result, ")");
-      break;
-    case SMARTPL_T_OR:
-      sql_append_str(result, "(");
-      sql_from_ast(result, a->l);
-      sql_append_str(result, negative ? " OR NOT " : " OR ");
-      sql_from_ast(result, a->r);
-      sql_append_str(result, ")");
-      break;
-    case SMARTPL_T_IS:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_PLAYLIST); break;
     case SMARTPL_T_EQUALS:
-      sql_append_str(result, "(");
-      sql_from_ast(result, a->l);
-      sql_append_str(result, negative ? " != " : " = ");
-      sql_from_ast(result, a->r);
-      sql_append_str(result, ")");
-      break;
+      sql_append_recursive(result, a, "=", "!=", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_LESS:
+      sql_append_recursive(result, a, "<", ">=", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_LESSEQUAL:
+      sql_append_recursive(result, a, "<=", ">", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_GREATER:
+      sql_append_recursive(result, a, ">", ">=", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_GREATEREQUAL:
+      sql_append_recursive(result, a, ">=", "<", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_IS:
+      sql_append_recursive(result, a, "=", "!=", is_not, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_INCLUDES:
-      sql_append_str(result, "(");
-      sql_from_ast(result, a->l);
-      sql_append_str(result, negative ? " NOT LIKE " : " LIKE ");
-      sql_from_ast(result, a->r);
-      sql_append_str(result, ")");
-      break;
+      sql_append_recursive(result, a, "LIKE", "NOT LIKE", is_not, SQL_APPEND_OPERATOR_LIKE); break;
+    case SMARTPL_T_BEFORE:
+      sql_append_recursive(result, a, "<", ">=", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_AFTER:
+      sql_append_recursive(result, a, ">", "<=", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_AND:
+      sql_append_recursive(result, a, "AND", "AND NOT", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_OR:
+      sql_append_recursive(result, a, "OR", "OR NOT", is_not, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_ORDERBY:
+      sql_append_recursive(result, a, "ORDER BY", NULL, 0, SQL_APPEND_OPERATOR); break;
+    case SMARTPL_T_LIMIT:
+      sql_append_recursive(result, a, "LIMIT", NULL, 0, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_QUOTED:
     case SMARTPL_T_STRTAG:
     case SMARTPL_T_INTTAG:
     case SMARTPL_T_DATETAG:
     case SMARTPL_T_DATAKINDTAG:
     case SMARTPL_T_MEDIAKINDTAG:
-      assert(a->l == NULL);
-      assert(a->r == NULL);
-      sql_append_str(result, (char *)a->data);
-      break;
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_STR); break;
     case SMARTPL_T_NUM:
     case SMARTPL_T_DATAKIND:
     case SMARTPL_T_MEDIAKIND:
-      assert(a->l == NULL);
-      assert(a->r == NULL);
-      sql_append_int(result, a->ival);
-      break;
+    case SMARTPL_T_DATE:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_INT); break;
+    case SMARTPL_T_ORDER_ASC:
+      sql_append_recursive(result, a, "ASC", NULL, 0, SQL_APPEND_ORDER); break;
+    case SMARTPL_T_ORDER_DESC:
+      sql_append_recursive(result, a, "DESC", NULL, 0, SQL_APPEND_ORDER); break;
+    case SMARTPL_T_LEFT:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_GROUP); break;
     default:
-      printf("MISSING TAG\n");
+      printf("MISSING TAG: %d\n", a->type);
   }
 }
 }
@@ -275,7 +315,14 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 %token <str> SMARTPL_T_DATAKINDTAG
 %token <str> SMARTPL_T_MEDIAKINDTAG
 
+%token SMARTPL_T_LIMIT
+%token SMARTPL_T_ORDERBY
+%token SMARTPL_T_ORDER_ASC
+%token SMARTPL_T_ORDER_DESC
 %token SMARTPL_T_RANDOM
+
+%token SMARTPL_T_LEFT
+%token SMARTPL_T_RIGHT
 
 /* The below are only ival so we can set intbool etc via the default rule for
    semantic values, i.e. $$ = $1. The semantic value (ival) is set to the token
@@ -292,7 +339,6 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 %token <ival> SMARTPL_T_DATE
 %token <ival> SMARTPL_T_INTERVAL
 
-%token <ival> SMARTPL_T_DATEADDED
 %token <ival> SMARTPL_T_BEFORE
 %token <ival> SMARTPL_T_AFTER
 %token <ival> SMARTPL_T_AGO
@@ -308,7 +354,10 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 
 %type <ast> playlist
 %type <ast> expression
+%type <ast> criteria
 %type <ast> predicate
+%type <ast> order
+%type <ast> limit
 %type <ival> interval
 %type <ival> dateval
 %type <ival> intbool
@@ -318,15 +367,22 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 
 %%
 
-playlistlist: playlist { memset(result, 0, sizeof(struct smartpl_result)); sql_from_ast(result, $1); }
+playlistlist: playlist { memset(result, 0, sizeof(struct smartpl_result)); sql_from_ast(result, $1); ast_free($1); }
 ;
 
 playlist: SMARTPL_T_QUOTED '{' expression '}'      { $$ = ast_new(SMARTPL_T_PL, ast_data(SMARTPL_T_QUOTED, $1), $3); }
 ;
 
-expression: expression SMARTPL_T_AND expression { $$ = ast_new($2, $1, $3); }
-| expression SMARTPL_T_OR expression            { $$ = ast_new($2, $1, $3); }
-| '(' expression ')'                            { $$ = $2; }
+expression: criteria
+| criteria order limit { $$ = ast_new(SMARTPL_T_ORDERBY, $1, ast_new(SMARTPL_T_LIMIT, $2, $3)); };
+| criteria limit order { $$ = ast_new(SMARTPL_T_ORDERBY, $1, ast_new(SMARTPL_T_LIMIT, $3, $2)); };
+| criteria order { $$ = ast_new(SMARTPL_T_ORDERBY, $1, $2); }
+| criteria limit { $$ = ast_new(SMARTPL_T_LIMIT, $1, $2); }
+;
+
+criteria: criteria SMARTPL_T_AND criteria  { $$ = ast_new($2, $1, $3); }
+| criteria SMARTPL_T_OR criteria           { $$ = ast_new($2, $1, $3); }
+| SMARTPL_T_LEFT criteria SMARTPL_T_RIGHT  { $$ = ast_new(SMARTPL_T_LEFT, $2, NULL); }
 | predicate
 ;
 
@@ -335,6 +391,7 @@ predicate: SMARTPL_T_STRTAG strbool SMARTPL_T_QUOTED { $$ = ast_new($2, ast_data
 | SMARTPL_T_DATETAG datebool dateval              { $$ = ast_new($2, ast_data(SMARTPL_T_DATETAG, $1), ast_int(SMARTPL_T_DATE, $3)); }
 | SMARTPL_T_DATAKINDTAG bool SMARTPL_T_DATAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_DATAKINDTAG, $1), ast_int(SMARTPL_T_DATAKIND, $3)); }
 | SMARTPL_T_MEDIAKINDTAG bool SMARTPL_T_MEDIAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_MEDIAKINDTAG, $1), ast_int(SMARTPL_T_MEDIAKIND, $3)); }
+| SMARTPL_T_NOT predicate                         { struct ast *a = $2; a->type |= 0x80000000; $$ = $2; }
 ;
 
 strbool: bool
@@ -342,7 +399,6 @@ strbool: bool
 ;
 
 bool: SMARTPL_T_IS
-| SMARTPL_T_NOT strbool { $$ = $2 | 0x80000000; }
 ;
 
 intbool: SMARTPL_T_EQUALS
@@ -350,12 +406,10 @@ intbool: SMARTPL_T_EQUALS
 | SMARTPL_T_LESSEQUAL
 | SMARTPL_T_GREATER
 | SMARTPL_T_GREATEREQUAL
-| SMARTPL_T_NOT intbool { $$ = $2 | 0x80000000; }
 ;
 
 datebool: SMARTPL_T_BEFORE
 | SMARTPL_T_AFTER
-| SMARTPL_T_NOT datebool { $$ = $2 | 0x80000000; }
 ;
 
 interval: SMARTPL_T_INTERVAL
@@ -366,6 +420,18 @@ dateval: SMARTPL_T_DATE
 | interval SMARTPL_T_BEFORE dateval { $$ = $3 - $1; }
 | interval SMARTPL_T_AFTER dateval  { $$ = $3 + $1; }
 | interval SMARTPL_T_AGO            { $$ = time(NULL) - $1; }
+;
+
+order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_INTTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATETAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG { $$ = ast_data(SMARTPL_T_ORDER_ASC, $2); }
+| order SMARTPL_T_ORDER_ASC { struct ast *a = $1; a->type = SMARTPL_T_ORDER_ASC; $$ = $1; }
+| order SMARTPL_T_ORDER_DESC { struct ast *a = $1; a->type = SMARTPL_T_ORDER_DESC; $$ = $1; }
+;
+
+limit: SMARTPL_T_LIMIT SMARTPL_T_NUM { $$ = ast_int(SMARTPL_T_NUM, $2); }
 ;
 
 %%

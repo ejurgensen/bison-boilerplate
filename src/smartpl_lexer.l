@@ -85,6 +85,10 @@ audiobook      { yylval->ival = 3; return SMARTPL_T_MEDIAKIND; }
 tvshow         { yylval->ival = 4; return SMARTPL_T_MEDIAKIND; }
 
 random         { return SMARTPL_T_RANDOM; }
+limit          { return SMARTPL_T_LIMIT; }
+order\ by      { return SMARTPL_T_ORDERBY; }
+desc           { return SMARTPL_T_ORDER_DESC; }
+asc            { return SMARTPL_T_ORDER_ASC; }
 
 {yyyymmdd}               { yylval->ival = l_convertyyyymmdd(yytext); return (SMARTPL_T_DATE); }
 today                    { yylval->ival = time(NULL); return (SMARTPL_T_DATE); }
@@ -120,12 +124,15 @@ not |
 \>=                      { return (yylval->ival = SMARTPL_T_GREATEREQUAL); }
 \>                       { return (yylval->ival = SMARTPL_T_GREATER); }
 
+\(                       { return SMARTPL_T_LEFT; }
+\)                       { return SMARTPL_T_RIGHT; }
+
 {quoted}                { yylval->str=strdup(yytext+1);
                            if(yylval->str[strlen(yylval->str)-1] == '"')
                                yylval->str[strlen(yylval->str)-1] = '\0';
                            return (SMARTPL_T_QUOTED); }
 
-[0-9]+                   { yylval->ival=atoi(yytext); return (SMARTPL_T_NUM); }
+[0-9]+                   { yylval->ival=atoi(yytext); return SMARTPL_T_NUM; }
 
 . { return yytext[0]; }
 

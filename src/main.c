@@ -33,6 +33,22 @@ static struct test_query smartpl_test_queries[] =
     "\"Recently added music\" { media_kind is music order by time_added desc limit 10 }",
     ""
   },
+  {
+    "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
+    ""
+  },
+  {
+    "\"Files added after January 1, 2004\" { time_added after 2004-01-01 }",
+    ""
+  },
+  {
+    "\"Recently Added\" { time_added after 2 weeks ago }",
+    ""
+  },
+  {
+    "\"Recently played audiobooks\" { time_played after last week and media_kind is audiobook }",
+    ""
+  },
 };
 
 static struct test_query daap_test_queries[] =
