@@ -39,7 +39,7 @@ re_operator (!?[:@])
 {re_quote} { BEGIN IN_CRITERIA; return DAAP_T_QUOTE; }
 
 <IN_CRITERIA>{re_key}/{re_operator} { yylval->str = strdup(yytext); return DAAP_T_KEY; }
-<IN_CRITERIA>{re_operator} { BEGIN IN_CRITERIA_VALUE; return (*yytext == '!' ? DAAP_T_NOT_EQUAL : DAAP_T_EQUAL); }
+<IN_CRITERIA>{re_operator} { BEGIN IN_CRITERIA_VALUE; return (*yytext == '!' ? DAAP_T_NOT : DAAP_T_EQUAL); }
 <IN_CRITERIA>. { return *yytext; } // Return anything else, should give syntax error
 
 <IN_CRITERIA_VALUE>{re_value}/{re_quote} { yylval->str = strdup(yytext); return DAAP_T_VALUE; }

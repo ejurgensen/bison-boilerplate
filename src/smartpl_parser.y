@@ -100,11 +100,14 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
     struct ast *l;
     struct ast *r;
     void *data;
+    int ival;
   };
 
-  __attribute__((unused)) static struct ast * new_ast(int type, struct ast *l, struct ast *r)
+  __attribute__((unused)) static struct ast * ast_new(int type, struct ast *l, struct ast *r)
   {
     struct ast *a = calloc(1, sizeof(struct ast));
+
+    printf("Adding ast type %d\n", type);
 
     a->type = type;
     a->l = l;
@@ -113,12 +116,26 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
   }
 
   /* Note *data is expected to be freeable with regular free() */
-  __attribute__((unused)) static struct ast * new_data(int type, void *data)
+  __attribute__((unused)) static struct ast * ast_data(int type, void *data)
   {
     struct ast *a = calloc(1, sizeof(struct ast));
 
+    printf("Adding type %d, char %s\n", type, (char *)data);
+
     a->type = type;
     a->data = data;
+    return a;
+  }
+
+  /* Note *data is expected to be freeable with regular free() */
+  __attribute__((unused)) static struct ast * ast_int(int type, int ival)
+  {
+    struct ast *a = calloc(1, sizeof(struct ast));
+
+    printf("Adding type %d, int %d\n", type, ival);
+
+    a->type = type;
+    a->ival = ival;
     return a;
   }
 
@@ -132,31 +149,6 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
     free(a->data);
     free(a);
   }
-
-struct ast * pl_newintpredicate(int tag, int op, int value) {
-  printf("Add intpred %d: %d\n", op, value);
-  return NULL;
-}
-
-struct ast * pl_newdatepredicate(int tag, int op, int value) {
-  printf("Add datepred %d: %d\n", op, value);
-  return NULL;
-}
-
-struct ast * pl_newcharpredicate(int tag, int op, char *value) {
-  printf("Add charpred %d: %s\n", op, value);
-  return NULL;
-}
-
-struct ast * pl_newexpr(struct ast *arg1, int op, struct ast *arg2) {
-  printf("Add ast %d\n", op);
-  return NULL;
-}
-
-int pl_addplaylist(char *name, struct ast *a) {
-  printf("Add playlist %s\n", name);
-  return 0;
-}
 }
 
 %destructor { free_ast($$); } <ast>
@@ -168,8 +160,10 @@ int pl_addplaylist(char *name, struct ast *a) {
 %code top {
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 }
 
 /* Definition of struct that will hold the parsing result */
@@ -181,129 +175,197 @@ struct smartpl_result {
 };
 }
 
+%code {
+
+static void sql_append_str(struct smartpl_result *result, const char *s)
+{
+  result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", s);
+}
+
+static void sql_append_int(struct smartpl_result *result, int d)
+{
+  result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%d", d);
+}
+
+/* Creates the parsing result from the AST */
+static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
+  if (!a)
+    return;
+
+  bool negative = (a->type & 0x80000000);
+  /* TODO Error handling, check lengths */
+
+//  printf("%d\n", a->type);
+
+  switch (a->type)
+  {
+    case SMARTPL_T_PL:
+      sql_append_str(result, "playlist = ");
+      sql_from_ast(result, a->l);
+      sql_append_str(result, " AND (");
+      sql_from_ast(result, a->r);
+      sql_append_str(result, ")");
+      break;
+    case SMARTPL_T_AND:
+      sql_append_str(result, "(");
+      sql_from_ast(result, a->l);
+      sql_append_str(result, negative ? " AND NOT " : " AND ");
+      sql_from_ast(result, a->r);
+      sql_append_str(result, ")");
+      break;
+    case SMARTPL_T_OR:
+      sql_append_str(result, "(");
+      sql_from_ast(result, a->l);
+      sql_append_str(result, negative ? " OR NOT " : " OR ");
+      sql_from_ast(result, a->r);
+      sql_append_str(result, ")");
+      break;
+    case SMARTPL_T_IS:
+    case SMARTPL_T_EQUALS:
+      sql_append_str(result, "(");
+      sql_from_ast(result, a->l);
+      sql_append_str(result, negative ? " != " : " = ");
+      sql_from_ast(result, a->r);
+      sql_append_str(result, ")");
+      break;
+    case SMARTPL_T_INCLUDES:
+      sql_append_str(result, "(");
+      sql_from_ast(result, a->l);
+      sql_append_str(result, negative ? " NOT LIKE " : " LIKE ");
+      sql_from_ast(result, a->r);
+      sql_append_str(result, ")");
+      break;
+    case SMARTPL_T_QUOTED:
+    case SMARTPL_T_STRTAG:
+    case SMARTPL_T_INTTAG:
+    case SMARTPL_T_DATETAG:
+    case SMARTPL_T_DATAKINDTAG:
+    case SMARTPL_T_MEDIAKINDTAG:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      sql_append_str(result, (char *)a->data);
+      break;
+    case SMARTPL_T_NUM:
+    case SMARTPL_T_DATAKIND:
+    case SMARTPL_T_MEDIAKIND:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      sql_append_int(result, a->ival);
+      break;
+    default:
+      printf("MISSING TAG\n");
+  }
+}
+}
+
 %union {
   unsigned int ival;
-  char *cval;
+  char *str;
   struct ast *ast;
 }
 
-%token <ival> ARTIST
-%token <ival> ALBUM
-%token <ival> GENRE
-%token <ival> PATH
-%token <ival> COMPOSER
-%token <ival> ORCHESTRA
-%token <ival> CONDUCTOR
-%token <ival> GROUPING
-%token <ival> TYPE
-%token <ival> COMMENT
+%token SMARTPL_T_PL
 
-%token <ival> EQUALS
-%token <ival> LESS
-%token <ival> LESSEQUAL
-%token <ival> GREATER
-%token <ival> GREATEREQUAL
-%token <ival> IS
-%token <ival> INCLUDES
+%token <str> SMARTPL_T_QUOTED
 
-%token <ival> OR
-%token <ival> AND
-%token <ival> NOT
+/* THe semantic value holds the actual name of the field */
+%token <str> SMARTPL_T_STRTAG
+%token <str> SMARTPL_T_INTTAG
+%token <str> SMARTPL_T_DATETAG
+%token <str> SMARTPL_T_DATAKINDTAG
+%token <str> SMARTPL_T_MEDIAKINDTAG
 
-%token <cval> ID
-%token <ival> NUM
-%token <ival> DATE
+%token SMARTPL_T_RANDOM
 
-%token <ival> YEAR
-%token <ival> BPM
-%token <ival> BITRATE
+/* The below are only ival so we can set intbool etc via the default rule for
+   semantic values, i.e. $$ = $1. The semantic value (ival) is set to the token
+   value by the lexer. */
+%token <ival> SMARTPL_T_EQUALS
+%token <ival> SMARTPL_T_LESS
+%token <ival> SMARTPL_T_LESSEQUAL
+%token <ival> SMARTPL_T_GREATER
+%token <ival> SMARTPL_T_GREATEREQUAL
+%token <ival> SMARTPL_T_IS
+%token <ival> SMARTPL_T_INCLUDES
 
-%token <ival> DATEADDED
-%token <ival> BEFORE
-%token <ival> AFTER
-%token <ival> AGO
-%token <ival> INTERVAL
+%token <ival> SMARTPL_T_NUM
+%token <ival> SMARTPL_T_DATE
+%token <ival> SMARTPL_T_INTERVAL
 
-%left OR AND
+%token <ival> SMARTPL_T_DATEADDED
+%token <ival> SMARTPL_T_BEFORE
+%token <ival> SMARTPL_T_AFTER
+%token <ival> SMARTPL_T_AGO
 
+%token <ival> SMARTPL_T_DATAKIND
+%token <ival> SMARTPL_T_MEDIAKIND
+
+%token <ival> SMARTPL_T_OR
+%token <ival> SMARTPL_T_AND
+%token <ival> SMARTPL_T_NOT
+
+%left SMARTPL_T_OR SMARTPL_T_AND
+
+%type <ast> playlist
 %type <ast> expression
 %type <ast> predicate
-%type <ival> strtag
-%type <ival> inttag
-%type <ival> datetag
-%type <ival> dateval
 %type <ival> interval
-%type <ival> strbool
+%type <ival> dateval
 %type <ival> intbool
 %type <ival> datebool
-%type <ival> playlist
+%type <ival> strbool
+%type <ival> bool
 
 %%
 
-playlistlist: playlist { result->str[0] = '\0'; }
-| playlistlist playlist { result->str[0] = '\0'; }
+playlistlist: playlist { memset(result, 0, sizeof(struct smartpl_result)); sql_from_ast(result, $1); }
 ;
 
-playlist: ID '{' expression '}' { $$ = pl_addplaylist($1, $3); }
+playlist: SMARTPL_T_QUOTED '{' expression '}'      { $$ = ast_new(SMARTPL_T_PL, ast_data(SMARTPL_T_QUOTED, $1), $3); }
 ;
 
-expression: expression AND expression { $$=pl_newexpr($1,$2,$3); }
-| expression OR expression { $$=pl_newexpr($1,$2,$3); }
-| '(' expression ')' { $$=$2; }
+expression: expression SMARTPL_T_AND expression { $$ = ast_new($2, $1, $3); }
+| expression SMARTPL_T_OR expression            { $$ = ast_new($2, $1, $3); }
+| '(' expression ')'                            { $$ = $2; }
 | predicate
 ;
 
-predicate: strtag strbool ID { $$=pl_newcharpredicate($1, $2, $3); }
-| inttag intbool NUM { $$=pl_newintpredicate($1, $2, $3); }
-| datetag datebool dateval { $$=pl_newdatepredicate($1, $2, $3); }
+predicate: SMARTPL_T_STRTAG strbool SMARTPL_T_QUOTED { $$ = ast_new($2, ast_data(SMARTPL_T_STRTAG, $1), ast_data(SMARTPL_T_QUOTED, $3)); }
+| SMARTPL_T_INTTAG intbool SMARTPL_T_NUM          { $$ = ast_new($2, ast_data(SMARTPL_T_INTTAG, $1), ast_int(SMARTPL_T_NUM, $3)); }
+| SMARTPL_T_DATETAG datebool dateval              { $$ = ast_new($2, ast_data(SMARTPL_T_DATETAG, $1), ast_int(SMARTPL_T_DATE, $3)); }
+| SMARTPL_T_DATAKINDTAG bool SMARTPL_T_DATAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_DATAKINDTAG, $1), ast_int(SMARTPL_T_DATAKIND, $3)); }
+| SMARTPL_T_MEDIAKINDTAG bool SMARTPL_T_MEDIAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_MEDIAKINDTAG, $1), ast_int(SMARTPL_T_MEDIAKIND, $3)); }
 ;
 
-datetag: DATEADDED { $$ = $1; }
+strbool: bool
+| SMARTPL_T_INCLUDES
 ;
 
-inttag: YEAR
-| BPM
-| BITRATE
+bool: SMARTPL_T_IS
+| SMARTPL_T_NOT strbool { $$ = $2 | 0x80000000; }
 ;
 
-intbool: EQUALS { $$ = $1; }
-| LESS { $$ = $1; }
-| LESSEQUAL { $$ = $1; }
-| GREATER { $$ = $1; }
-| GREATEREQUAL { $$ = $1; }
-| NOT intbool { $$ = $2 | 0x80000000; }
+intbool: SMARTPL_T_EQUALS
+| SMARTPL_T_LESS
+| SMARTPL_T_LESSEQUAL
+| SMARTPL_T_GREATER
+| SMARTPL_T_GREATEREQUAL
+| SMARTPL_T_NOT intbool { $$ = $2 | 0x80000000; }
 ;
 
-datebool: BEFORE { $$ = $1; }
-| AFTER { $$ = $1; }
-| NOT datebool { $$=$2 | 0x80000000; }
+datebool: SMARTPL_T_BEFORE
+| SMARTPL_T_AFTER
+| SMARTPL_T_NOT datebool { $$ = $2 | 0x80000000; }
 ;
 
-interval: INTERVAL { $$ = $1; }
-| NUM INTERVAL { $$ = $1 * $2; }
+interval: SMARTPL_T_INTERVAL
+| SMARTPL_T_NUM SMARTPL_T_INTERVAL { $$ = $1 * $2; }
 ;
 
-dateval: DATE { $$ = $1; }
-| interval BEFORE dateval { $$ = $3 - $1; }
-| interval AFTER dateval { $$ = $3 + $1; }
-| interval AGO { $$ = time(NULL) - $1; }
-;
-
-strtag: ARTIST
-| ALBUM
-| GENRE
-| PATH
-| COMPOSER
-| ORCHESTRA
-| CONDUCTOR
-| GROUPING
-| TYPE
-| COMMENT
-;
-
-strbool: IS { $$=$1; }
-| INCLUDES { $$=$1; }
-| NOT strbool { $$=$2 | 0x80000000; }
+dateval: SMARTPL_T_DATE
+| interval SMARTPL_T_BEFORE dateval { $$ = $3 - $1; }
+| interval SMARTPL_T_AFTER dateval  { $$ = $3 + $1; }
+| interval SMARTPL_T_AGO            { $$ = time(NULL) - $1; }
 ;
 
 %%

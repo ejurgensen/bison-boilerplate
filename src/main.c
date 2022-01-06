@@ -14,11 +14,23 @@ struct test_query
 static struct test_query smartpl_test_queries[] =
 {
   {
-    "\"techno\" { genre includes \"techno\" and artist includes \"zombie\" }",
+    "\"tech1\" { genre includes \"techno\" and not artist includes \"zombie\" }",
     ""
   },
   {
-    "\"techno\" { genre includes \"techno\" and artist includes \"zombie\" } \"techno\" { genre includes \"techno\" and artist includes \"zombie\" }",
+    "\"techno 2015\" {\ngenre includes \"techno\"\n and artist includes \"zombie\"\nand not genre includes \"industrial\"\n}\n",
+    ""
+  },
+  {
+    "\"Local music\" {data_kind is spotify and media_kind is music}",
+    ""
+  },
+  {
+    "\"Unplayed podcasts and audiobooks\" { play_count = 0 and (media_kind is podcast or media_kind is audiobook) }",
+    ""
+  },
+  {
+    "\"Recently added music\" { media_kind is music order by time_added desc limit 10 }",
     ""
   },
 };

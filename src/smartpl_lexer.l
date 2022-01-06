@@ -16,11 +16,6 @@
 /* Makes a Bison-compatible yylex */
 %option bison-bridge
 
-%option case-insensitive
-
-qstring \"[^\"\n]*[\"\n]
-yyyymmdd  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
-
 %{
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,74 +25,107 @@ yyyymmdd  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
 
 /* Unknown why this is required despite using prefix */
 #define YYSTYPE SMARTPL_STYPE
+%}
 
+
+/* ========================= NON-BOILERPLATE SECTION =========================*/
+
+%{
 time_t l_converttime(int day, int month, int year);
 time_t l_convertyyyymmdd(char *date);
 %}
 
-/* ========================= NON-BOILERPLATE SECTION =========================*/
+%option case-insensitive
+
+quoted \"[^\"\n]*[\"\n]
+yyyymmdd  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
+
 %%
 
-[\n\t ]+
-\#.*\n
+[\n\t ]+       /* Ignore whitespace */
+\#.*\n         /* Ignore comments */
 
-artist                   { yylval->ival=ARTIST; return(ARTIST); }
-album                    { yylval->ival=ALBUM; return(ALBUM); }
-genre                    { yylval->ival=GENRE; return(GENRE); }
-path                     { yylval->ival=PATH; return(PATH); }
-composer                 { yylval->ival=COMPOSER; return(COMPOSER); }
-orchestra                { yylval->ival=ORCHESTRA; return(ORCHESTRA); }
-conductor                { yylval->ival=CONDUCTOR; return(CONDUCTOR); }
-grouping                 { yylval->ival=GROUPING; return(GROUPING); }
-type                     { yylval->ival=TYPE; return(TYPE); }
-comment                  { yylval->ival=COMMENT; return(COMMENT); }
+artist         { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+album_artist   { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+album          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+title          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+genre          { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+composer       { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+comment        { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+path           { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+type           { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
+grouping       { yylval->str = strdup(yytext); return SMARTPL_T_STRTAG; }
 
-year                     { yylval->ival=YEAR; return(YEAR); }
-bpm                      { yylval->ival=BPM; return(BPM); }
-bitrate                  { yylval->ival=BITRATE; return(BITRATE); }
+play_count     { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+skip_count     { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+rating         { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+year           { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+compilation    { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+track          { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
+disc           { yylval->str = strdup(yytext); return SMARTPL_T_INTTAG; }
 
-date                     { yylval->ival=DATEADDED; return(DATEADDED); }
+time_added     { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
+time_modified  { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
+time_played    { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
+time_skipped   { yylval->str = strdup(yytext); return SMARTPL_T_DATETAG; }
 
-{yyyymmdd}               { yylval->ival=l_convertyyyymmdd(yytext); return(DATE); }
-today                    { yylval->ival=time(NULL); return(DATE); }
-yesterday                { yylval->ival=time(NULL) - 24*3600; return(DATE); }
-last\ week               { yylval->ival=time(NULL) - 24*3600*7; return(DATE); }
-last\ month              { yylval->ival=time(NULL) - 24*3600*30; return(DATE); }
-last\ year               { yylval->ival=time(NULL) - 24*3600*365; return(DATE); }
+data_kind      { yylval->str = strdup(yytext); return SMARTPL_T_DATAKINDTAG; }
+media_kind     { yylval->str = strdup(yytext); return SMARTPL_T_MEDIAKINDTAG; }
 
-days?                    { yylval->ival=24*3600; return(INTERVAL); }
-weeks?                   { yylval->ival=24*3600*7; return(INTERVAL); }
-months?                  { yylval->ival=24*3600*30; return(INTERVAL); }
-years?                   { yylval->ival=24*3600*365; return(INTERVAL); }
+               /* TODO include db.h and use real values */
+file           { yylval->ival = 0; return SMARTPL_T_DATAKIND; }
+url            { yylval->ival = 1; return SMARTPL_T_DATAKIND; }
+spotify        { yylval->ival = 2; return SMARTPL_T_DATAKIND; }
+pipe           { yylval->ival = 3; return SMARTPL_T_DATAKIND; }
 
-ago                      { yylval->ival=AGO; return(AGO); }
-before                   { yylval->ival=BEFORE; return(BEFORE); }
-after                    { yylval->ival=AFTER; return(AFTER); }
+music          { yylval->ival = 0; return SMARTPL_T_MEDIAKIND; }
+movie          { yylval->ival = 1; return SMARTPL_T_MEDIAKIND; }
+podcast        { yylval->ival = 2; return SMARTPL_T_MEDIAKIND; }
+audiobook      { yylval->ival = 3; return SMARTPL_T_MEDIAKIND; }
+tvshow         { yylval->ival = 4; return SMARTPL_T_MEDIAKIND; }
 
-is                       { yylval->ival=IS; return(IS); }
-includes                 { yylval->ival=INCLUDES; return(INCLUDES); }
-=                        { yylval->ival=EQUALS; return(EQUALS); }
+random         { return SMARTPL_T_RANDOM; }
+
+{yyyymmdd}               { yylval->ival = l_convertyyyymmdd(yytext); return (SMARTPL_T_DATE); }
+today                    { yylval->ival = time(NULL); return (SMARTPL_T_DATE); }
+yesterday                { yylval->ival = time(NULL) - 24*3600; return (SMARTPL_T_DATE); }
+last\ week               { yylval->ival = time(NULL) - 24*3600*7; return (SMARTPL_T_DATE); }
+last\ month              { yylval->ival = time(NULL) - 24*3600*30; return (SMARTPL_T_DATE); }
+last\ year               { yylval->ival = time(NULL) - 24*3600*365; return (SMARTPL_T_DATE); }
+
+days?                    { yylval->ival = 24*3600; return (SMARTPL_T_INTERVAL); }
+weeks?                   { yylval->ival = 24*3600*7; return (SMARTPL_T_INTERVAL); }
+months?                  { yylval->ival = 24*3600*30; return (SMARTPL_T_INTERVAL); }
+years?                   { yylval->ival = 24*3600*365; return (SMARTPL_T_INTERVAL); }
+
+ago                      { return (yylval->ival = SMARTPL_T_AGO); }
+before                   { return (yylval->ival = SMARTPL_T_BEFORE); }
+after                    { return (yylval->ival = SMARTPL_T_AFTER); }
+
+is                       { return (yylval->ival = SMARTPL_T_IS); }
+includes                 { return (yylval->ival = SMARTPL_T_INCLUDES); }
+=                        { return (yylval->ival = SMARTPL_T_EQUALS); }
 
 or |
-\|\|                     { yylval->ival=OR; return(OR); }
+\|\|                     { return (yylval->ival = SMARTPL_T_OR); }
 
 and |
-&&                       { yylval->ival=AND; return(AND); }
+&&                       { return (yylval->ival = SMARTPL_T_AND); }
 
 not |
-!                        { yylval->ival=1; return(NOT); }
+!                        { return (yylval->ival = SMARTPL_T_NOT); }
 
-\<=                      { yylval->ival=LESSEQUAL; return(LESSEQUAL); }
-\<                       { yylval->ival=LESS; return(LESS); }
-\>=                      { yylval->ival=GREATEREQUAL; return(GREATEREQUAL); }
-\>                       { yylval->ival=GREATER; return(GREATER); }
+\<=                      { return (yylval->ival = SMARTPL_T_LESSEQUAL); }
+\<                       { return (yylval->ival = SMARTPL_T_LESS); }
+\>=                      { return (yylval->ival = SMARTPL_T_GREATEREQUAL); }
+\>                       { return (yylval->ival = SMARTPL_T_GREATER); }
 
-{qstring}                { yylval->cval=strdup(yytext+1);
-                           if(yylval->cval[strlen(yylval->cval)-1] == '"')
-                               yylval->cval[strlen(yylval->cval)-1] = '\0';
-                           return(ID); }
+{quoted}                { yylval->str=strdup(yytext+1);
+                           if(yylval->str[strlen(yylval->str)-1] == '"')
+                               yylval->str[strlen(yylval->str)-1] = '\0';
+                           return (SMARTPL_T_QUOTED); }
 
-[0-9]+                   { yylval->ival=atoi(yytext); return(NUM); }
+[0-9]+                   { yylval->ival=atoi(yytext); return (SMARTPL_T_NUM); }
 
 . { return yytext[0]; }
 
