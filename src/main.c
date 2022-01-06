@@ -34,6 +34,10 @@ static struct test_query smartpl_test_queries[] =
     ""
   },
   {
+    "\"Recently added music\" { media_kind is music limit 20 order by time_added desc }",
+    ""
+  },
+  {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
     ""
   },
@@ -159,15 +163,8 @@ smartpl_test_parse(char *input, char *expected)
     printf("==! FAILED !==\n");
 }
 
-int main(int argc, char *argv[])
+static void daap_test(int from, int to)
 {
-  int from, to;
-
-  if (argc != 3)
-    goto bad_args;
-  else if ( (from = atoi(argv[1])) > (to = atoi(argv[2])) )
-    goto bad_args;
-
   // daap_debug = 1;
   for (int i = from; i <= to; i++)
     {
@@ -175,15 +172,36 @@ int main(int argc, char *argv[])
       daap_test_parse(daap_test_queries[i].input, daap_test_queries[i].expected);
       printf("\n");
     }
+}
 
-
+static void smartpl_test(int from, int to)
+{
   // smartpl_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+//      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       smartpl_test_parse(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       printf("\n");
     }
+}
+
+int main(int argc, char *argv[])
+{
+  int from, to;
+
+  if ( argc == 4 && (from = atoi(argv[2])) > (to = atoi(argv[3])) )
+    goto bad_args;
+  else if ( argc == 3 && (from = atoi(argv[2])) > (to = atoi(argv[2])) )
+    goto bad_args;
+  else if (argc < 3 || argc > 4)
+    goto bad_args;
+
+  if (strcmp(argv[1], "daap") == 0)
+    daap_test(from, to);
+  else if (strcmp(argv[1], "smartpl") == 0)
+    smartpl_test(from, to);
+  else
+    goto bad_args;
 
   return 0;
 

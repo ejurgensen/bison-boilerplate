@@ -110,19 +110,14 @@ is                       { return (yylval->ival = SMARTPL_T_IS); }
 includes                 { return (yylval->ival = SMARTPL_T_INCLUDES); }
 =                        { return (yylval->ival = SMARTPL_T_EQUALS); }
 
-or |
-\|\|                     { return (yylval->ival = SMARTPL_T_OR); }
-
-and |
-&&                       { return (yylval->ival = SMARTPL_T_AND); }
-
-not |
-!                        { return (yylval->ival = SMARTPL_T_NOT); }
-
 \<=                      { return (yylval->ival = SMARTPL_T_LESSEQUAL); }
 \<                       { return (yylval->ival = SMARTPL_T_LESS); }
 \>=                      { return (yylval->ival = SMARTPL_T_GREATEREQUAL); }
 \>                       { return (yylval->ival = SMARTPL_T_GREATER); }
+
+or                       { return SMARTPL_T_OR; }
+and                      { return SMARTPL_T_AND; }
+not                      { return SMARTPL_T_NOT; }
 
 \(                       { return SMARTPL_T_LEFT; }
 \)                       { return SMARTPL_T_RIGHT; }

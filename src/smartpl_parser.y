@@ -324,9 +324,20 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 %token SMARTPL_T_LEFT
 %token SMARTPL_T_RIGHT
 
-/* The below are only ival so we can set intbool etc via the default rule for
-   semantic values, i.e. $$ = $1. The semantic value (ival) is set to the token
-   value by the lexer. */
+%token <ival> SMARTPL_T_NUM
+%token <ival> SMARTPL_T_DATE
+%token <ival> SMARTPL_T_INTERVAL
+
+%token <ival> SMARTPL_T_DATAKIND
+%token <ival> SMARTPL_T_MEDIAKIND
+
+%token SMARTPL_T_OR
+%token SMARTPL_T_AND
+%token SMARTPL_T_NOT
+
+/* The below are only ival so we can set intbool, datebool and strbool via the
+   default rule for semantic values, i.e. $$ = $1. The semantic value (ival) is
+   set to the token value by the lexer. */
 %token <ival> SMARTPL_T_EQUALS
 %token <ival> SMARTPL_T_LESS
 %token <ival> SMARTPL_T_LESSEQUAL
@@ -334,21 +345,9 @@ static void sql_from_ast(struct smartpl_result *result, struct ast *a) {
 %token <ival> SMARTPL_T_GREATEREQUAL
 %token <ival> SMARTPL_T_IS
 %token <ival> SMARTPL_T_INCLUDES
-
-%token <ival> SMARTPL_T_NUM
-%token <ival> SMARTPL_T_DATE
-%token <ival> SMARTPL_T_INTERVAL
-
 %token <ival> SMARTPL_T_BEFORE
 %token <ival> SMARTPL_T_AFTER
 %token <ival> SMARTPL_T_AGO
-
-%token <ival> SMARTPL_T_DATAKIND
-%token <ival> SMARTPL_T_MEDIAKIND
-
-%token <ival> SMARTPL_T_OR
-%token <ival> SMARTPL_T_AND
-%token <ival> SMARTPL_T_NOT
 
 %left SMARTPL_T_OR SMARTPL_T_AND
 
@@ -380,8 +379,8 @@ expression: criteria
 | criteria limit { $$ = ast_new(SMARTPL_T_LIMIT, $1, $2); }
 ;
 
-criteria: criteria SMARTPL_T_AND criteria  { $$ = ast_new($2, $1, $3); }
-| criteria SMARTPL_T_OR criteria           { $$ = ast_new($2, $1, $3); }
+criteria: criteria SMARTPL_T_AND criteria  { $$ = ast_new(SMARTPL_T_AND, $1, $3); }
+| criteria SMARTPL_T_OR criteria           { $$ = ast_new(SMARTPL_T_OR, $1, $3); }
 | SMARTPL_T_LEFT criteria SMARTPL_T_RIGHT  { $$ = ast_new(SMARTPL_T_LEFT, $2, NULL); }
 | predicate
 ;
