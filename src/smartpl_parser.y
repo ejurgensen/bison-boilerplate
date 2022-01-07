@@ -107,8 +107,6 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
   {
     struct ast *a = calloc(1, sizeof(struct ast));
 
-    printf("Adding ast type %d\n", type);
-
     a->type = type;
     a->l = l;
     a->r = r;
@@ -120,8 +118,6 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
   {
     struct ast *a = calloc(1, sizeof(struct ast));
 
-    printf("Adding type %d, char %s\n", type, (char *)data);
-
     a->type = type;
     a->data = data;
     return a;
@@ -131,8 +127,6 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
   __attribute__((unused)) static struct ast * ast_int(int type, int ival)
   {
     struct ast *a = calloc(1, sizeof(struct ast));
-
-    printf("Adding type %d, int %d\n", type, ival);
 
     a->type = type;
     a->ival = ival;
