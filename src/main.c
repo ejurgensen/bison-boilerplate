@@ -14,48 +14,48 @@ struct test_query
 static struct test_query smartpl_test_queries[] =
 {
   {
-    "\"tech1\" { genre includes \"techno\" and not artist includes \"zombie\" }",
-    ""
+    "\"tech1\" { genre includes \"techno\" and not artist includes \"zombie\" and album is \"test\" }",
+    "tech1: WHERE f.genre LIKE '%techno%' AND f.artist NOT LIKE '%zombie%' AND f.album = 'test'"
   },
   {
     "\"techno 2015\" {\ngenre includes \"techno\"\n and artist includes \"zombie\"\nand not genre includes \"industrial\"\n}\n",
-    ""
+    "techno 2015: WHERE f.genre LIKE '%techno%' AND f.artist LIKE '%zombie%' AND f.genre NOT LIKE '%industrial%'"
   },
   {
     "\"Local music\" {data_kind is spotify and media_kind is music}",
-    ""
+    "Local music: WHERE f.data_kind = 2 AND f.media_kind = 0"
   },
   {
     "\"Unplayed podcasts and audiobooks\" { play_count = 0 and (media_kind is podcast or media_kind is audiobook) }",
-    ""
+    "Unplayed podcasts and audiobooks: WHERE f.play_count = 0 AND (f.media_kind = 2 OR f.media_kind = 3)"
   },
   {
     "\"Recently added music\" { media_kind is music order by time_added desc limit 10 }",
-    ""
+    "Recently added music: WHERE f.media_kind = 0 ORDER BY f.time_added DESC LIMIT 10"
   },
   {
     "\"Recently added music\" { media_kind is music limit 20 order by time_added desc }",
-    ""
+    "[invalid syntax]"
   },
   {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
-    ""
+    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 0 ORDER BY random() DESC LIMIT 10"
   },
   {
     "\"Files added after January 1, 2004\" { time_added after 2004-01-01 }",
-    ""
+    "Files added after January 1, 2004: WHERE f.time_added > strftime('%s', datetime('2004-01-01', 'utc'))"
   },
   {
     "\"Recently Added\" { time_added after 2 weeks ago }",
-    ""
+    "Recently Added: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-14 days', 'utc'))"
   },
   {
     "\"Recently played audiobooks\" { time_played after last week and media_kind is audiobook }",
-    ""
+    "Recently played audiobooks: WHERE f.time_played > strftime('%s', datetime('now', 'start of day', 'weekday 0', '-13 days', 'utc')) AND f.media_kind = 3"
   },
   {
     "\"query\" { time_added after 8 weeks ago and media_kind is music having track_count > 3 order by time_added desc }",
-    ""
+    "query: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND f.media_kind = 0 HAVING track_count > 3 ORDER BY f.time_added DESC"
   },
 };
 
@@ -152,21 +152,26 @@ static void
 smartpl_test_parse(char *input, char *expected)
 {
   struct smartpl_result result;
+  char buf[1024];
+  int offset = 0;
 
   printf("=== INPUT ===\n%s\n", input);
 
   if (smartpl_lex_parse(&result, input) == 0)
     {
       printf("=== RESULT ===\n");
-      printf(".title: %s\n", result.title);
-      printf(".where: %s\n", result.where);
-      printf(".having: %s\n", result.having);
-      printf(".order: %s\n", result.order);
-      printf(".limit: %d\n", result.limit);
-      if (strcmp(expected, result.where) == 0)
+      offset += snprintf(buf + offset, sizeof(buf) - offset, "%s: WHERE %s", result.title, result.where);
+      if (result.having)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " HAVING %s", result.having);
+      if (result.order)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " ORDER BY %s", result.order);
+      if (result.limit)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " LIMIT %d", result.limit);
+      printf("%s\n", buf);
+      if (strcmp(expected, buf) == 0)
         printf("=== SUCCES ===\n");
       else
-        printf("==! UNEXPECTED !==\n");
+        printf("==! UNEXPECTED !==\n%s\n", expected);
     }
   else
     printf("==! FAILED !==\n");

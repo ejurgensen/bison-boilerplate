@@ -158,6 +158,7 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
 
 /* Includes required by the parser rules */
 %code top {
+#define _GNU_SOURCE // For asprintf
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -189,13 +190,15 @@ struct smartpl_result {
 %code {
 enum sql_append_type {
   SQL_APPEND_OPERATOR,
+  SQL_APPEND_OPERATOR_STR,
   SQL_APPEND_OPERATOR_LIKE,
   SQL_APPEND_FIELD,
   SQL_APPEND_STR,
-  SQL_APPEND_QUOTED,
   SQL_APPEND_INT,
   SQL_APPEND_ORDER,
   SQL_APPEND_GROUP,
+  SQL_APPEND_DATE_STRFTIME,
+  SQL_APPEND_DATE_FIELD,
 };
 
 static const char * sql_from_ast(struct result_part *result, struct ast *a);
@@ -209,11 +212,17 @@ static void sql_append_recursive(struct result_part *result, struct ast *a, cons
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s ", is_not ? op_not : op);
       sql_from_ast(result, a->r);
       break;
+    case SQL_APPEND_OPERATOR_STR:
+      sql_from_ast(result, a->l);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s '", is_not ? op_not : op);
+      sql_from_ast(result, a->r);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "'");
+      break;
     case SQL_APPEND_OPERATOR_LIKE:
       sql_from_ast(result, a->l);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s %%", is_not ? op_not : op);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, " %s '%%", is_not ? op_not : op);
       sql_from_ast(result, a->r);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%%");
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%%'");
       break;
     case SQL_APPEND_FIELD:
       assert(a->l == NULL);
@@ -224,11 +233,6 @@ static void sql_append_recursive(struct result_part *result, struct ast *a, cons
       assert(a->l == NULL);
       assert(a->r == NULL);
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", (char *)a->data);
-      break;
-    case SQL_APPEND_QUOTED:
-      assert(a->l == NULL);
-      assert(a->r == NULL);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "\"%s\"", (char *)a->data);
       break;
     case SQL_APPEND_INT:
       assert(a->l == NULL);
@@ -245,6 +249,22 @@ static void sql_append_recursive(struct result_part *result, struct ast *a, cons
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "(");
       sql_from_ast(result, a->l);
       result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, ")");
+      break;
+    case SQL_APPEND_DATE_STRFTIME:
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "strftime('%%s', datetime(");
+      sql_from_ast(result, a->l); // Appends the anchor date
+      sql_from_ast(result, a->r); // Appends interval if there is one
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "'utc'))");
+      break;
+    case SQL_APPEND_DATE_FIELD:
+      assert(a->l == NULL);
+      assert(a->r == NULL);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "'");
+      if (is_not ? op_not : op)
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", is_not ? op_not : op);
+      if (a->data)
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", (char *)a->data);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "', ");
       break;
   }
 }
@@ -273,7 +293,7 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
     case SMARTPL_T_GREATEREQUAL:
       sql_append_recursive(result, a, ">=", "<", is_not, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_IS:
-      sql_append_recursive(result, a, "=", "!=", is_not, SQL_APPEND_OPERATOR); break;
+      sql_append_recursive(result, a, "=", "!=", is_not, SQL_APPEND_OPERATOR_STR); break;
     case SMARTPL_T_INCLUDES:
       sql_append_recursive(result, a, "LIKE", "NOT LIKE", is_not, SQL_APPEND_OPERATOR_LIKE); break;
     case SMARTPL_T_BEFORE:
@@ -284,8 +304,26 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
       sql_append_recursive(result, a, "AND", "AND NOT", is_not, SQL_APPEND_OPERATOR); break;
     case SMARTPL_T_OR:
       sql_append_recursive(result, a, "OR", "OR NOT", is_not, SQL_APPEND_OPERATOR); break;
-    case SMARTPL_T_QUOTED:
-      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_QUOTED); break;
+    case SMARTPL_T_DATEEXPR:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_DATE_STRFTIME); break; // 2004-01-01 -> datetime('2004-01-01', 'utc')
+    case SMARTPL_T_DATE:
+      sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_DATE_TODAY:
+      sql_append_recursive(result, a, "now', 'start of day", NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_DATE_YESTERDAY:
+      sql_append_recursive(result, a, "now', 'start of day', '-1 day", NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_DATE_LASTWEEK:
+      sql_append_recursive(result, a, "now', 'start of day', 'weekday 0', '-13 days", NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_DATE_LASTMONTH:
+      sql_append_recursive(result, a, "now', 'start of month', '-1 month", NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_DATE_LASTYEAR:
+      sql_append_recursive(result, a, "now', 'start of year', '-1 year", NULL, 0, SQL_APPEND_DATE_FIELD); break;
+    // 2 weeks after today -> datetime('now', 'start of day', '+14 days', 'utc')
+    // 2 weeks ago -> datetime('now', 'start of day', '-14 days', 'utc')
+    // 2 weeks before 2004-01-01 -> datetime('2004-01-01', '-14 days', 'utc')
+    case SMARTPL_T_INTERVAL:
+      sql_append_recursive(result, a, "-", "+", is_not, SQL_APPEND_DATE_FIELD); break;
+    case SMARTPL_T_UNQUOTED:
     case SMARTPL_T_GROUPTAG:
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_STR); break;
     case SMARTPL_T_STRTAG:
@@ -297,7 +335,6 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
     case SMARTPL_T_NUM:
     case SMARTPL_T_DATAKIND:
     case SMARTPL_T_MEDIAKIND:
-    case SMARTPL_T_DATE:
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_INT); break;
     case SMARTPL_T_ORDERBY:
       sql_append_recursive(result, a, "ASC", "DESC", is_not, SQL_APPEND_ORDER); break;
@@ -310,7 +347,7 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
   return result->str;
 }
 
-static void result_set(struct smartpl_result *result, const char *title, struct ast *criteria, struct ast *having, struct ast *order, struct ast *limit)
+static void result_set(struct smartpl_result *result, char *title, struct ast *criteria, struct ast *having, struct ast *order, struct ast *limit)
 {
   memset(result, 0, sizeof(struct smartpl_result));
   snprintf(result->title, sizeof(result->title), "%s", title);
@@ -318,6 +355,11 @@ static void result_set(struct smartpl_result *result, const char *title, struct 
   result->having = sql_from_ast(&result->having_part, having);
   result->order  = sql_from_ast(&result->order_part, order);
   result->limit  = limit ? limit->ival : 0;
+
+  free(title);
+  ast_free(criteria);
+  ast_free(having);
+  ast_free(order);
 }
 }
 
@@ -328,7 +370,7 @@ static void result_set(struct smartpl_result *result, const char *title, struct 
 }
 
 /* A string that was quoted. Quotes were stripped by lexer. */
-%token <str> SMARTPL_T_QUOTED
+%token <str> SMARTPL_T_UNQUOTED
 
 /* The semantic value holds the actual name of the field */
 %token <str> SMARTPL_T_STRTAG
@@ -338,6 +380,7 @@ static void result_set(struct smartpl_result *result, const char *title, struct 
 %token <str> SMARTPL_T_MEDIAKINDTAG
 %token <str> SMARTPL_T_GROUPTAG
 
+%token SMARTPL_T_DATEEXPR
 %token SMARTPL_T_HAVING
 %token SMARTPL_T_ORDERBY
 %token SMARTPL_T_ORDER_ASC
@@ -350,9 +393,20 @@ static void result_set(struct smartpl_result *result, const char *title, struct 
 %token SMARTPL_T_AND
 %token SMARTPL_T_NOT
 
+%token SMARTPL_T_DAYS
+%token SMARTPL_T_WEEKS
+%token SMARTPL_T_MONTHS
+%token SMARTPL_T_YEARS
+%token SMARTPL_T_INTERVAL
+
+%token <str> SMARTPL_T_DATE
+%token <ival> SMARTPL_T_DATE_TODAY
+%token <ival> SMARTPL_T_DATE_YESTERDAY
+%token <ival> SMARTPL_T_DATE_LASTWEEK
+%token <ival> SMARTPL_T_DATE_LASTMONTH
+%token <ival> SMARTPL_T_DATE_LASTYEAR
+
 %token <ival> SMARTPL_T_NUM
-%token <ival> SMARTPL_T_DATE
-%token <ival> SMARTPL_T_INTERVAL
 %token <ival> SMARTPL_T_DATAKIND
 %token <ival> SMARTPL_T_MEDIAKIND
 
@@ -374,48 +428,83 @@ static void result_set(struct smartpl_result *result, const char *title, struct 
 
 %type <ast> criteria
 %type <ast> predicate
+%type <ast> dateexpr
+%type <ast> interval
 %type <ast> having
 %type <ast> order
 %type <ast> limit
-%type <ival> interval
-%type <ival> dateval
+%type <str> time
+%type <ival> daterelative
+%type <ival> strbool
 %type <ival> intbool
 %type <ival> datebool
-%type <ival> strbool
-%type <ival> bool
 
 %%
 
 playlist:
-  SMARTPL_T_QUOTED '{' criteria having order limit '}' { result_set(result, $1, $3, $4, $5, $6); }
-| SMARTPL_T_QUOTED '{' criteria having order '}'       { result_set(result, $1, $3, $4, $5, NULL); }
-| SMARTPL_T_QUOTED '{' criteria having limit '}'       { result_set(result, $1, $3, $4, NULL, $5); }
-| SMARTPL_T_QUOTED '{' criteria having '}'             { result_set(result, $1, $3, $4, NULL, NULL); }
-| SMARTPL_T_QUOTED '{' criteria order limit '}'        { result_set(result, $1, $3, NULL, $4, $5); }
-| SMARTPL_T_QUOTED '{' criteria order '}'              { result_set(result, $1, $3, NULL, $4, NULL); }
-| SMARTPL_T_QUOTED '{' criteria limit '}'              { result_set(result, $1, $3, NULL, NULL, $4); }
-| SMARTPL_T_QUOTED '{' criteria '}'                    { result_set(result, $1, $3, NULL, NULL, NULL); }
+  SMARTPL_T_UNQUOTED '{' criteria having order limit '}'    { result_set(result, $1, $3, $4, $5, $6); }
+| SMARTPL_T_UNQUOTED '{' criteria having order '}'          { result_set(result, $1, $3, $4, $5, NULL); }
+| SMARTPL_T_UNQUOTED '{' criteria having limit '}'          { result_set(result, $1, $3, $4, NULL, $5); }
+| SMARTPL_T_UNQUOTED '{' criteria having '}'                { result_set(result, $1, $3, $4, NULL, NULL); }
+| SMARTPL_T_UNQUOTED '{' criteria order limit '}'           { result_set(result, $1, $3, NULL, $4, $5); }
+| SMARTPL_T_UNQUOTED '{' criteria order '}'                 { result_set(result, $1, $3, NULL, $4, NULL); }
+| SMARTPL_T_UNQUOTED '{' criteria limit '}'                 { result_set(result, $1, $3, NULL, NULL, $4); }
+| SMARTPL_T_UNQUOTED '{' criteria '}'                       { result_set(result, $1, $3, NULL, NULL, NULL); }
 ;
 
-criteria: criteria SMARTPL_T_AND criteria  { $$ = ast_new(SMARTPL_T_AND, $1, $3); }
-| criteria SMARTPL_T_OR criteria           { $$ = ast_new(SMARTPL_T_OR, $1, $3); }
-| SMARTPL_T_LEFT criteria SMARTPL_T_RIGHT  { $$ = ast_new(SMARTPL_T_LEFT, $2, NULL); }
+criteria: criteria SMARTPL_T_AND criteria                   { $$ = ast_new(SMARTPL_T_AND, $1, $3); }
+| criteria SMARTPL_T_OR criteria                            { $$ = ast_new(SMARTPL_T_OR, $1, $3); }
+| SMARTPL_T_LEFT criteria SMARTPL_T_RIGHT                   { $$ = ast_new(SMARTPL_T_LEFT, $2, NULL); }
 | predicate
 ;
 
-predicate: SMARTPL_T_STRTAG strbool SMARTPL_T_QUOTED { $$ = ast_new($2, ast_data(SMARTPL_T_STRTAG, $1), ast_data(SMARTPL_T_QUOTED, $3)); }
-| SMARTPL_T_INTTAG intbool SMARTPL_T_NUM          { $$ = ast_new($2, ast_data(SMARTPL_T_INTTAG, $1), ast_int(SMARTPL_T_NUM, $3)); }
-| SMARTPL_T_DATETAG datebool dateval              { $$ = ast_new($2, ast_data(SMARTPL_T_DATETAG, $1), ast_int(SMARTPL_T_DATE, $3)); }
-| SMARTPL_T_DATAKINDTAG bool SMARTPL_T_DATAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_DATAKINDTAG, $1), ast_int(SMARTPL_T_DATAKIND, $3)); }
-| SMARTPL_T_MEDIAKINDTAG bool SMARTPL_T_MEDIAKIND { $$ = ast_new($2, ast_data(SMARTPL_T_MEDIAKINDTAG, $1), ast_int(SMARTPL_T_MEDIAKIND, $3)); }
-| SMARTPL_T_NOT predicate                         { struct ast *a = $2; a->type |= 0x80000000; $$ = $2; }
+predicate: SMARTPL_T_STRTAG strbool SMARTPL_T_UNQUOTED      { $$ = ast_new($2, ast_data(SMARTPL_T_STRTAG, $1), ast_data(SMARTPL_T_UNQUOTED, $3)); }
+| SMARTPL_T_INTTAG intbool SMARTPL_T_NUM                    { $$ = ast_new($2, ast_data(SMARTPL_T_INTTAG, $1), ast_int(SMARTPL_T_NUM, $3)); }
+| SMARTPL_T_DATETAG datebool dateexpr                       { $$ = ast_new($2, ast_data(SMARTPL_T_DATETAG, $1), $3); }
+| SMARTPL_T_DATAKINDTAG SMARTPL_T_IS SMARTPL_T_DATAKIND     { $$ = ast_new(SMARTPL_T_EQUALS, ast_data(SMARTPL_T_DATAKINDTAG, $1), ast_int(SMARTPL_T_DATAKIND, $3)); }
+| SMARTPL_T_MEDIAKINDTAG SMARTPL_T_IS SMARTPL_T_MEDIAKIND   { $$ = ast_new(SMARTPL_T_EQUALS, ast_data(SMARTPL_T_MEDIAKINDTAG, $1), ast_int(SMARTPL_T_MEDIAKIND, $3)); }
+| SMARTPL_T_NOT predicate                                   { struct ast *a = $2; a->type |= 0x80000000; $$ = $2; }
 ;
 
-strbool: bool
+dateexpr: SMARTPL_T_DATE                                    { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data(SMARTPL_T_DATE, $1), NULL); }
+| daterelative                                              { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data($1, NULL), NULL); }
+| interval SMARTPL_T_DATE                                   { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data(SMARTPL_T_DATE, $2), $1); }
+| interval daterelative                                     { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data($2, NULL), $1); }
+| time SMARTPL_T_AGO                                        { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data(SMARTPL_T_DATE_TODAY, NULL), ast_data(SMARTPL_T_INTERVAL, $1)); }
+
+daterelative: SMARTPL_T_DATE_TODAY
+| SMARTPL_T_DATE_YESTERDAY
+| SMARTPL_T_DATE_LASTWEEK
+| SMARTPL_T_DATE_LASTMONTH
+| SMARTPL_T_DATE_LASTYEAR
+;
+
+interval: time SMARTPL_T_BEFORE                             { $$ = ast_data(SMARTPL_T_INTERVAL, $1); }
+| time SMARTPL_T_AFTER                                      { $$ = ast_data(SMARTPL_T_INTERVAL | 0x80000000, $1); }
+;
+
+time: SMARTPL_T_NUM SMARTPL_T_DAYS                          { if (asprintf(&($$), "%d days", $1) < 0) YYABORT; }
+| SMARTPL_T_NUM SMARTPL_T_WEEKS                             { if (asprintf(&($$), "%d days", 7 * $1) < 0) YYABORT; }
+| SMARTPL_T_NUM SMARTPL_T_MONTHS                            { if (asprintf(&($$), "%d months", $1) < 0) YYABORT;  }
+| SMARTPL_T_NUM SMARTPL_T_YEARS                             { if (asprintf(&($$), "%d years", $1) < 0) YYABORT;  }
+;
+
+having: SMARTPL_T_HAVING SMARTPL_T_GROUPTAG intbool SMARTPL_T_NUM { $$ = ast_new($3, ast_data(SMARTPL_T_GROUPTAG, $2), ast_int(SMARTPL_T_NUM, $4)); }
+
+order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG                   { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_INTTAG                        { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATETAG                       { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG                   { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG                  { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| order SMARTPL_T_ORDER_ASC                                 { struct ast *a = $1; a->type = SMARTPL_T_ORDERBY; $$ = $1; }
+| order SMARTPL_T_ORDER_DESC                                { struct ast *a = $1; a->type |= 0x80000000; $$ = $1; }
+;
+
+limit: SMARTPL_T_LIMIT SMARTPL_T_NUM                        { $$ = ast_int(SMARTPL_T_LIMIT, $2); }
+;
+
+strbool: SMARTPL_T_IS
 | SMARTPL_T_INCLUDES
-;
-
-bool: SMARTPL_T_IS
 ;
 
 intbool: SMARTPL_T_EQUALS
@@ -427,30 +516,6 @@ intbool: SMARTPL_T_EQUALS
 
 datebool: SMARTPL_T_BEFORE
 | SMARTPL_T_AFTER
-;
-
-interval: SMARTPL_T_INTERVAL
-| SMARTPL_T_NUM SMARTPL_T_INTERVAL { $$ = $1 * $2; }
-;
-
-dateval: SMARTPL_T_DATE
-| interval SMARTPL_T_BEFORE dateval { $$ = $3 - $1; }
-| interval SMARTPL_T_AFTER dateval  { $$ = $3 + $1; }
-| interval SMARTPL_T_AGO            { $$ = time(NULL) - $1; }
-;
-
-having: SMARTPL_T_HAVING SMARTPL_T_GROUPTAG intbool SMARTPL_T_NUM { $$ = ast_new($3, ast_data(SMARTPL_T_GROUPTAG, $2), ast_int(SMARTPL_T_NUM, $4)); }
-
-order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_INTTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_DATETAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
-| SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
-| order SMARTPL_T_ORDER_ASC { struct ast *a = $1; a->type = SMARTPL_T_ORDERBY; $$ = $1; }
-| order SMARTPL_T_ORDER_DESC { struct ast *a = $1; a->type |= 0x80000000; $$ = $1; }
-;
-
-limit: SMARTPL_T_LIMIT SMARTPL_T_NUM { $$ = ast_int(SMARTPL_T_LIMIT, $2); }
 ;
 
 %%

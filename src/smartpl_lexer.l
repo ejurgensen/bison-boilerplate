@@ -104,44 +104,44 @@ desc           { return SMARTPL_T_ORDER_DESC; }
 asc            { return SMARTPL_T_ORDER_ASC; }
 limit          { return SMARTPL_T_LIMIT; }
 
-{yyyymmdd}               { yylval->ival = l_convertyyyymmdd(yytext); return (SMARTPL_T_DATE); }
-today                    { yylval->ival = time(NULL); return (SMARTPL_T_DATE); }
-yesterday                { yylval->ival = time(NULL) - 24*3600; return (SMARTPL_T_DATE); }
-last\ week               { yylval->ival = time(NULL) - 24*3600*7; return (SMARTPL_T_DATE); }
-last\ month              { yylval->ival = time(NULL) - 24*3600*30; return (SMARTPL_T_DATE); }
-last\ year               { yylval->ival = time(NULL) - 24*3600*365; return (SMARTPL_T_DATE); }
+{yyyymmdd}     { yylval->str = strdup(yytext); return SMARTPL_T_DATE; }
+today          { return (yylval->ival = SMARTPL_T_DATE_TODAY); }
+yesterday      { return (yylval->ival = SMARTPL_T_DATE_YESTERDAY); }
+last\ week     { return (yylval->ival = SMARTPL_T_DATE_LASTWEEK); }
+last\ month    { return (yylval->ival = SMARTPL_T_DATE_LASTMONTH); }
+last\ year     { return (yylval->ival = SMARTPL_T_DATE_LASTYEAR); }
 
-days?                    { yylval->ival = 24*3600; return (SMARTPL_T_INTERVAL); }
-weeks?                   { yylval->ival = 24*3600*7; return (SMARTPL_T_INTERVAL); }
-months?                  { yylval->ival = 24*3600*30; return (SMARTPL_T_INTERVAL); }
-years?                   { yylval->ival = 24*3600*365; return (SMARTPL_T_INTERVAL); }
+days?          { return SMARTPL_T_DAYS; }
+weeks?         { return SMARTPL_T_WEEKS; }
+months?        { return SMARTPL_T_MONTHS; }
+years?         { return SMARTPL_T_YEARS; }
 
-ago                      { return (yylval->ival = SMARTPL_T_AGO); }
-before                   { return (yylval->ival = SMARTPL_T_BEFORE); }
-after                    { return (yylval->ival = SMARTPL_T_AFTER); }
+ago            { return (yylval->ival = SMARTPL_T_AGO); }
+before         { return (yylval->ival = SMARTPL_T_BEFORE); }
+after          { return (yylval->ival = SMARTPL_T_AFTER); }
 
-is                       { return (yylval->ival = SMARTPL_T_IS); }
-includes                 { return (yylval->ival = SMARTPL_T_INCLUDES); }
-=                        { return (yylval->ival = SMARTPL_T_EQUALS); }
+is             { return (yylval->ival = SMARTPL_T_IS); }
+includes       { return (yylval->ival = SMARTPL_T_INCLUDES); }
+=              { return (yylval->ival = SMARTPL_T_EQUALS); }
 
-\<=                      { return (yylval->ival = SMARTPL_T_LESSEQUAL); }
-\<                       { return (yylval->ival = SMARTPL_T_LESS); }
-\>=                      { return (yylval->ival = SMARTPL_T_GREATEREQUAL); }
-\>                       { return (yylval->ival = SMARTPL_T_GREATER); }
+\<=            { return (yylval->ival = SMARTPL_T_LESSEQUAL); }
+\<             { return (yylval->ival = SMARTPL_T_LESS); }
+\>=            { return (yylval->ival = SMARTPL_T_GREATEREQUAL); }
+\>             { return (yylval->ival = SMARTPL_T_GREATER); }
 
-or                       { return SMARTPL_T_OR; }
-and                      { return SMARTPL_T_AND; }
-not                      { return SMARTPL_T_NOT; }
+or             { return SMARTPL_T_OR; }
+and            { return SMARTPL_T_AND; }
+not            { return SMARTPL_T_NOT; }
 
-\(                       { return SMARTPL_T_LEFT; }
-\)                       { return SMARTPL_T_RIGHT; }
+\(             { return SMARTPL_T_LEFT; }
+\)             { return SMARTPL_T_RIGHT; }
 
-{quoted}                { yylval->str=strdup(yytext+1);
-                           if(yylval->str[strlen(yylval->str)-1] == '"')
-                               yylval->str[strlen(yylval->str)-1] = '\0';
-                           return (SMARTPL_T_QUOTED); }
+{quoted}       { yylval->str=strdup(yytext+1);
+                 if(yylval->str[strlen(yylval->str)-1] == '"')
+                   yylval->str[strlen(yylval->str)-1] = '\0';
+                 return SMARTPL_T_UNQUOTED; }
 
-[0-9]+                   { yylval->ival=atoi(yytext); return SMARTPL_T_NUM; }
+[0-9]+         { yylval->ival=atoi(yytext); return SMARTPL_T_NUM; }
 
 . { return yytext[0]; }
 
