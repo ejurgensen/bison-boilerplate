@@ -165,6 +165,8 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+
+#define INVERT_MASK 0x80000000
 }
 
 /* Definition of struct that will hold the parsing result */
@@ -242,7 +244,9 @@ static void sql_append_recursive(struct result_part *result, struct ast *a, cons
     case SQL_APPEND_ORDER:
       assert(a->l == NULL);
       assert(a->r == NULL);
-      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "f.%s %s", (char *)a->data, is_not ? op_not : op);
+      if (a->data)
+        result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "f.%s ", (char *)a->data);
+      result->offset += snprintf(result->str + result->offset, sizeof(result->str) - result->offset, "%s", is_not ? op_not : op);
       break;
     case SQL_APPEND_GROUP:
       assert(a->r == NULL);
@@ -274,9 +278,9 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
   if (!a)
     return NULL;
 
-  bool is_not = (a->type & 0x80000000);
+  bool is_not = (a->type & INVERT_MASK);
 
-  a->type &= ~0x80000000;
+  a->type &= ~INVERT_MASK;
 
   /* TODO Error handling, check lengths */
 
@@ -338,6 +342,8 @@ static const char * sql_from_ast(struct result_part *result, struct ast *a) {
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_INT); break;
     case SMARTPL_T_ORDERBY:
       sql_append_recursive(result, a, "ASC", "DESC", is_not, SQL_APPEND_ORDER); break;
+    case SMARTPL_T_RANDOM:
+      sql_append_recursive(result, a, "random()", NULL, 0, SQL_APPEND_ORDER); break;
     case SMARTPL_T_LEFT:
       sql_append_recursive(result, a, NULL, NULL, 0, SQL_APPEND_GROUP); break;
     default:
@@ -463,7 +469,7 @@ predicate: SMARTPL_T_STRTAG strbool SMARTPL_T_UNQUOTED      { $$ = ast_new($2, a
 | SMARTPL_T_DATETAG datebool dateexpr                       { $$ = ast_new($2, ast_data(SMARTPL_T_DATETAG, $1), $3); }
 | SMARTPL_T_DATAKINDTAG SMARTPL_T_IS SMARTPL_T_DATAKIND     { $$ = ast_new(SMARTPL_T_EQUALS, ast_data(SMARTPL_T_DATAKINDTAG, $1), ast_int(SMARTPL_T_DATAKIND, $3)); }
 | SMARTPL_T_MEDIAKINDTAG SMARTPL_T_IS SMARTPL_T_MEDIAKIND   { $$ = ast_new(SMARTPL_T_EQUALS, ast_data(SMARTPL_T_MEDIAKINDTAG, $1), ast_int(SMARTPL_T_MEDIAKIND, $3)); }
-| SMARTPL_T_NOT predicate                                   { struct ast *a = $2; a->type |= 0x80000000; $$ = $2; }
+| SMARTPL_T_NOT predicate                                   { struct ast *a = $2; a->type |= INVERT_MASK; $$ = $2; }
 ;
 
 dateexpr: SMARTPL_T_DATE                                    { $$ = ast_new(SMARTPL_T_DATEEXPR, ast_data(SMARTPL_T_DATE, $1), NULL); }
@@ -480,7 +486,7 @@ daterelative: SMARTPL_T_DATE_TODAY
 ;
 
 interval: time SMARTPL_T_BEFORE                             { $$ = ast_data(SMARTPL_T_INTERVAL, $1); }
-| time SMARTPL_T_AFTER                                      { $$ = ast_data(SMARTPL_T_INTERVAL | 0x80000000, $1); }
+| time SMARTPL_T_AFTER                                      { $$ = ast_data(SMARTPL_T_INTERVAL | INVERT_MASK, $1); }
 ;
 
 time: SMARTPL_T_NUM SMARTPL_T_DAYS                          { if (asprintf(&($$), "%d days", $1) < 0) YYABORT; }
@@ -496,8 +502,9 @@ order: SMARTPL_T_ORDERBY SMARTPL_T_STRTAG                   { $$ = ast_data(SMAR
 | SMARTPL_T_ORDERBY SMARTPL_T_DATETAG                       { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
 | SMARTPL_T_ORDERBY SMARTPL_T_DATAKINDTAG                   { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
 | SMARTPL_T_ORDERBY SMARTPL_T_MEDIAKINDTAG                  { $$ = ast_data(SMARTPL_T_ORDERBY, $2); }
+| SMARTPL_T_ORDERBY SMARTPL_T_RANDOM                        { $$ = ast_data(SMARTPL_T_RANDOM, NULL); }
 | order SMARTPL_T_ORDER_ASC                                 { struct ast *a = $1; a->type = SMARTPL_T_ORDERBY; $$ = $1; }
-| order SMARTPL_T_ORDER_DESC                                { struct ast *a = $1; a->type |= 0x80000000; $$ = $1; }
+| order SMARTPL_T_ORDER_DESC                                { struct ast *a = $1; a->type |= INVERT_MASK; $$ = $1; }
 ;
 
 limit: SMARTPL_T_LIMIT SMARTPL_T_NUM                        { $$ = ast_int(SMARTPL_T_LIMIT, $2); }

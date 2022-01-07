@@ -97,9 +97,9 @@ podcast        { yylval->ival = 2; return SMARTPL_T_MEDIAKIND; }
 audiobook      { yylval->ival = 3; return SMARTPL_T_MEDIAKIND; }
 tvshow         { yylval->ival = 4; return SMARTPL_T_MEDIAKIND; }
 
-random         { return SMARTPL_T_RANDOM; }
 having         { return SMARTPL_T_HAVING; }
 order\ by      { return SMARTPL_T_ORDERBY; }
+random         { return SMARTPL_T_RANDOM; }
 desc           { return SMARTPL_T_ORDER_DESC; }
 asc            { return SMARTPL_T_ORDER_ASC; }
 limit          { return SMARTPL_T_LIMIT; }

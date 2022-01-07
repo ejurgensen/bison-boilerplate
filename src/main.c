@@ -39,7 +39,7 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
-    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 0 ORDER BY random() DESC LIMIT 10"
+    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 0 ORDER BY random() LIMIT 10"
   },
   {
     "\"Files added after January 1, 2004\" { time_added after 2004-01-01 }",
