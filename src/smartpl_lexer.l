@@ -133,9 +133,6 @@ or             { return SMARTPL_T_OR; }
 and            { return SMARTPL_T_AND; }
 not            { return SMARTPL_T_NOT; }
 
-\(             { return SMARTPL_T_LEFT; }
-\)             { return SMARTPL_T_RIGHT; }
-
 {quoted}       { yylval->str=strdup(yytext+1);
                  if(yylval->str[strlen(yylval->str)-1] == '"')
                    yylval->str[strlen(yylval->str)-1] = '\0';

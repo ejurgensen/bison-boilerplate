@@ -174,7 +174,7 @@ smartpl_test_parse(char *input, char *expected)
         printf("==! UNEXPECTED !==\n%s\n", expected);
     }
   else
-    printf("==! FAILED !==\n");
+    printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
 static void daap_test(int from, int to)
@@ -193,7 +193,7 @@ static void smartpl_test(int from, int to)
   // smartpl_debug = 1;
   for (int i = from; i <= to; i++)
     {
-//      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       smartpl_test_parse(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       printf("\n");
     }
