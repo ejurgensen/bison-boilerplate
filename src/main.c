@@ -5,6 +5,8 @@
 #include "daap_parser.h"
 #include "smartpl_parser.h"
 
+#define DEBUG_SHOW_LEX 0
+
 struct test_query
 {
   char *input;
@@ -107,6 +109,7 @@ static struct test_query daap_test_queries[] =
   },
 };
 
+#if DEBUG_SHOW_LEX
 static void
 print_token_cb(int token, const char *s)
 {
@@ -128,6 +131,19 @@ smartpl_test_lexer(char *input, char *expected)
   smartpl_lex_cb(input, print_token_cb);
   printf("Done lexing\n\n");
 }
+#else
+static void
+daap_test_lexer(char *input, char *expected)
+{
+  return;
+}
+
+static void
+smartpl_test_lexer(char *input, char *expected)
+{
+  return;
+}
+#endif
 
 static void
 daap_test_parse(char *input, char *expected)
@@ -142,10 +158,10 @@ daap_test_parse(char *input, char *expected)
       if (strcmp(expected, result.str) == 0)
         printf("=== SUCCES ===\n");
       else
-        printf("==! UNEXPECTED !==\n");
+        printf("==! UNEXPECTED !==\n%s\n", expected);
     }
   else
-    printf("==! FAILED !==\n");
+    printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
 static void
