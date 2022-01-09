@@ -153,6 +153,7 @@ int daap_lex_parse(struct daap_result *result, char *input);
 %code top {
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdarg.h> // For vsnprintf
 }
@@ -162,15 +163,28 @@ int daap_lex_parse(struct daap_result *result, char *input);
 struct daap_result {
   char str[1024];
   int offset;
+  char escape_char; // Character used to escape _ and % in a LIKE result str
   int err;
   char errmsg[128];
 };
 }
 
 %code {
-static char * dmap_map(char *tag)
+struct dmap_query_field_map {
+  char *dmap_field;
+  char *db_col;
+  int as_int;
+};
+
+static struct dmap_query_field_map testdqfm_int = { "daap.testint", "f.testint", 1 };
+static struct dmap_query_field_map testdqfm_str = { "daap.teststr", "f.teststr", 0 };
+
+static struct dmap_query_field_map * daap_query_field_lookup(char *tag, int len)
 {
-  return tag;
+  if (strcmp(tag, testdqfm_str.dmap_field) == 0)
+    return &testdqfm_str;
+  else
+    return &testdqfm_int;
 }
 
 static void sql_append(struct daap_result *result, const char *fmt, ...)
@@ -196,6 +210,166 @@ static void sql_append(struct daap_result *result, const char *fmt, ...)
   result->err = -2;
 }
 
+static bool clause_is_always_true(bool is_equal, const char *key, const char *val)
+{
+  // This rule is carried over from the old parser, not sure of the background
+  if (is_equal && (strcmp(key, "daap.songalbumid") == 0) && val && val[0] == '0')
+    return true;
+
+  return false;
+}
+
+static bool clause_is_always_false(bool is_equal, const char *key, const char *val)
+{
+  // The server makes sure there always is an artist/album, so something like
+  // 'daap.songartist:' is always false
+  if (strcmp(key, "daap.songalbumartist") == 0 || strcmp(key, "daap.songartist") == 0 || strcmp(key, "daap.songalbum") == 0)
+    return !val;
+  // The server never has any media type 32, so ignore to improve select query
+  if ((strcmp(key, "com.apple.itunes.mediakind") == 0 || strcmp(key, "com.apple.itunes.extended-media-kind") == 0) && val && (strcmp(val, "32") == 0))
+    return true;
+
+  return false;
+}
+
+static int str_replace(char *s, size_t sz, const char *pattern, const char *replacement)
+{
+  char *ptr;
+  char *src;
+  char *dst;
+  size_t num;
+
+  if (!s)
+    return -1;
+
+  if (!pattern || !replacement)
+    return 0;
+
+  size_t p_len = strlen(pattern);
+  size_t r_len = strlen(replacement);
+  size_t s_len = strlen(s) + 1; // Incl terminator
+
+  ptr = s;
+  while ((ptr = strstr(ptr, pattern)))
+    {
+      // We will move the part of the string after the pattern from src to dst
+      src = ptr + p_len;
+      dst = ptr + r_len;
+
+      num = s_len - (src - s); // Number of bytes w/terminator we need to move
+      if (dst + num > s + sz)
+	return -1; // Not enough room
+
+      // Shift everything after the pattern to the right, use memmove since
+      // there might be an overlap
+      memmove(dst, src, num);
+
+      // Write replacement, no null terminater
+      memcpy(ptr, replacement, r_len);
+
+      // Advance ptr to avoid infinite looping
+      ptr = dst;
+    }
+
+  return 0;
+}
+
+static void sql_like_escape(char **value, char *escape_char)
+{
+  char *s = *value;
+  size_t len = strlen(s);
+  char *new;
+
+  if (len < 2)
+    return; // Shouldn't ever happen since lexer should give strings w/wildcards
+
+  if (!strpbrk(s, "_%\\"))
+    {
+      s[0] = s[len - 1] = '%';
+      return; // Fast path, nothing to escape
+    }
+
+  len = 2 * len; // Enough for every char to be escaped
+  new = realloc(s, len);
+  str_replace(new, len, "%", "\\%");
+  str_replace(new, len, "_", "\\_");
+  new[0] = new[strlen(new) - 1] = '%';
+  *escape_char = '\\';
+  *value = new;
+}
+
+static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
+{
+  struct dmap_query_field_map *dqfm;
+  struct ast *k = a->l;
+  struct ast *v = a->r;
+  bool is_equal = (a->type == DAAP_T_EQUAL);
+  char *key;
+  char *val;
+
+  if (!k || k->type != DAAP_T_KEY || !k->data)
+    {
+      snprintf(result->errmsg, sizeof(result->errmsg), "Missing key in dmap input");
+      result->err = -3;
+      return;
+    }
+  else if (!v || (v->type != DAAP_T_VALUE && v->type != DAAP_T_WILDCARD)) // NULL is ok
+    {
+      snprintf(result->errmsg, sizeof(result->errmsg), "Missing value in dmap input");
+      result->err = -3;
+      return;
+    }
+
+  key = (char *)k->data;
+  val = (char *)v->data;
+
+  if (clause_is_always_true(is_equal, key, val))
+    {
+      sql_append(result, is_equal ? "(1 = 1)" : "(1 = 0)");
+      return;
+    }
+  else if (clause_is_always_false(is_equal, key, val))
+    {
+      sql_append(result, is_equal ? "(1 = 0)" : "(1 = 1)");
+      return;
+    }
+
+  dqfm = daap_query_field_lookup(key, strlen(key));
+  if (!dqfm)
+    {
+      snprintf(result->errmsg, sizeof(result->errmsg), "Could not map dmap input field '%s' to a db column", key);
+      result->err = -4;
+      return;
+    }
+
+  if (!dqfm->as_int && !val)
+    {
+      // If it is a string and there is no value we select for '' OR NULL
+      sql_append(result, "(%s %s ''", dqfm->db_col, is_equal ? "=" : "<>");
+      sql_append(result, is_equal ? " OR " : " AND ");
+      sql_append(result, "%s %s NULL)", dqfm->db_col, is_equal ? "IS" : "IS NOT");
+      return;
+    }
+  else if (!dqfm->as_int && v->type == DAAP_T_WILDCARD)
+    {
+      sql_like_escape((char **)&v->data, &result->escape_char);
+      sql_append(result, "%s", dqfm->db_col);
+      sql_append(result, is_equal ? " LIKE " : " NOT LIKE ");
+      sql_append(result, "'%s'", (char *)v->data);
+      return;
+    }
+  else if (!val)
+    {
+      snprintf(result->errmsg, sizeof(result->errmsg), "Missing value for int field '%s'", key);
+      result->err = -5;
+      return;
+    }
+
+  sql_append(result, "%s", dqfm->db_col);
+  sql_append(result, is_equal ? " = " : " <> ");
+  sql_append(result, dqfm->as_int ? "%s" : "'%s'", val);
+}
+
 /* Creates the parsing result from the AST */
 static void sql_from_ast(struct daap_result *result, struct ast *a) {
   if (!a || result->err < 0)
@@ -209,17 +383,9 @@ static void sql_from_ast(struct daap_result *result, struct ast *a) {
         sql_append(result, a->type == DAAP_T_OR ? " OR " : " AND ");
         sql_from_ast(result, a->r);
         break;
-      case DAAP_T_KEY:
-        sql_append(result, "%s", dmap_map((char *)a->data));
-        break;
-      case DAAP_T_VALUE:
-        sql_append(result, "%s", a->data ? (char *)a->data : "\"\"");
-        break;
       case DAAP_T_EQUAL:
       case DAAP_T_NOT:
-        sql_from_ast(result, a->l);
-        sql_append(result, a->type == DAAP_T_EQUAL ? " = " : " != ");
-        sql_from_ast(result, a->r);
+        sql_append_dmap_clause(result, a); // Special handling due to many special rules
         break;
       case DAAP_T_PARENS:
         sql_append(result, "(");
@@ -237,17 +403,21 @@ static int result_set(struct daap_result *result, struct ast *a)
   memset(result, 0, sizeof(struct daap_result));
   sql_from_ast(result, a);
   ast_free(a);
+  if (result->escape_char)
+    sql_append(result, " ESCAPE '%c'", result->escape_char);
   return result->err;
 }
 }
 
 %union {
   char *str;
+  int ival;
   struct ast *ast;
 }
 
 %token<str> DAAP_T_KEY
 %token<str> DAAP_T_VALUE
+%token<str> DAAP_T_WILDCARD
 
 %token DAAP_T_EQUAL
 %token DAAP_T_NOT
@@ -258,24 +428,30 @@ static int result_set(struct daap_result *result, struct ast *a)
 %left DAAP_T_AND DAAP_T_OR
 
 %type <ast> expr
+%type <ival> bool
 
 %%
 
 query:
-    expr                           { return result_set(result, $1); }
-  | expr DAAP_T_NEWLINE            { return result_set(result, $1); }
-  ;
-
-expr:
-    expr DAAP_T_AND expr           { $$ = ast_new(DAAP_T_AND, $1, $3); }
-  | expr DAAP_T_OR expr            { $$ = ast_new(DAAP_T_OR, $1, $3); }
-  | '(' expr ')'                   { $$ = ast_new(DAAP_T_PARENS, $2, NULL); }
+  expr                           { return result_set(result, $1); }
+| expr DAAP_T_NEWLINE            { return result_set(result, $1); }
 ;
 
 expr:
-    DAAP_T_QUOTE DAAP_T_KEY DAAP_T_EQUAL DAAP_T_VALUE DAAP_T_QUOTE { $$ = ast_new(DAAP_T_EQUAL, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_VALUE, $4)); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT DAAP_T_VALUE DAAP_T_QUOTE   { $$ = ast_new(DAAP_T_NOT, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_VALUE, $4)); }
-  | DAAP_T_QUOTE DAAP_T_KEY DAAP_T_NOT DAAP_T_QUOTE                { $$ = ast_new(DAAP_T_NOT, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_VALUE, NULL)); }
+  expr DAAP_T_AND expr           { $$ = ast_new(DAAP_T_AND, $1, $3); }
+| expr DAAP_T_OR expr            { $$ = ast_new(DAAP_T_OR, $1, $3); }
+| '(' expr ')'                   { $$ = ast_new(DAAP_T_PARENS, $2, NULL); }
+;
+
+expr:
+  DAAP_T_QUOTE DAAP_T_KEY bool DAAP_T_VALUE DAAP_T_QUOTE    { $$ = ast_new($3, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_VALUE, $4)); }
+| DAAP_T_QUOTE DAAP_T_KEY bool DAAP_T_QUOTE                 { $$ = ast_new($3, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_VALUE, NULL)); }
+| DAAP_T_QUOTE DAAP_T_KEY bool DAAP_T_WILDCARD DAAP_T_QUOTE { $$ = ast_new($3, ast_data(DAAP_T_KEY, $2), ast_data(DAAP_T_WILDCARD, $4)); }
+;
+
+bool:
+  DAAP_T_EQUAL                   { $$ = DAAP_T_EQUAL; }
+| DAAP_T_NOT                     { $$ = DAAP_T_NOT; }
 ;
 
 %%

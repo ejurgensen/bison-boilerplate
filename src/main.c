@@ -61,51 +61,83 @@ static struct test_query smartpl_test_queries[] =
   },
 };
 
+
+// ('daap.songartist!:') -> 1 = 1
 static struct test_query daap_test_queries[] =
 {
   {
-    "'com.apple.itunes.extended-media-kind:32'",
-    "(1 = 0)"
+    "('daap.teststr!:')",
+    "((f.teststr <> '' AND f.teststr IS NOT NULL))"
   },
   {
-    "('daap.songartist!:' ('com.apple.itunes.extended-media-kind:1','com.apple.itunes.extended-media-kind:32'))",
-    "((f.media_kind = 1 OR 1 = 0))"
+    "('daap.teststr:')",
+    "((f.teststr = '' OR f.teststr IS NULL))"
   },
   {
-    "('daap.songalbumid:1034227734086706124' ('com.apple.itunes.extended-media-kind:4','com.apple.itunes.extended-media-kind:36','com.apple.itunes.extended-media-kind:6','com.apple.itunes.extended-media-kind:7'))",
-    "((f.songalbumid = 1034227734086706124 AND (((f.media_kind = 4 OR f.media_kind = 36) OR f.media_kind = 6) OR f.media_kind = 7)))"
+    "('daap.songartist!:' 'daap.testint:1')",
+    "((1 = 1) AND f.testint = 1)"
   },
   {
-    "('daap.songartistid:6912769229437698119' ('com.apple.itunes.extended-media-kind:1','com.apple.itunes.extended-media-kind:32'))",
-    "((f.songartistid = 6912769229437698119 AND (f.media_kind = 1 OR 1 = 0)))"
+    "('daap.songartist!:','daap.testint:1')",
+    "((1 = 1) OR f.testint = 1)"
   },
   {
-    "('com.apple.itunes.playlist-contains-media-type:1','com.apple.itunes.playlist-contains-media-type:32','com.apple.itunes.playlist-contains-media-type:128','com.apple.itunes.playlist-contains-media-type:1024','com.apple.itunes.playlist-contains-media-type:65537')",
-    ""
-  },
-  {
-    "('dmap.itemname:My Music on thundarr','com.apple.itunes.extended-media-kind@1','com.apple.itunes.extended-media-kind@32','com.apple.itunes.extended-media-kind@128','com.apple.itunes.extended-media-kind@65537')",
-    "(((((f.title = 'My Music on thundarr' OR f.media_kind = 1) OR 1 = 0) OR f.media_kind = 128) OR f.media_kind = 65537))"
-  },
-  {
-    "'daap.songgenre:Kid\\'s Audiobooks'",
-    "(f.genre = 'Kid''s Audiobooks')"
-  },
-  {
-    "'daap.songalbum!:'",
-    ""
-  },
-  {
-    "('daap.songartist:*cfbnk*' ('com.apple.itunes.mediakind:1','com.apple.itunes.mediakind:32') 'daap.songartist!:')",
-    "((f.album_artist LIKE '%cfbnk%' AND (f.media_kind = 1 OR 1 = 0)))"
-  },
-  {
-    "(('com.apple.itunes.mediakind:4','com.apple.itunes.mediakind:36','com.apple.itunes.mediakind:6','com.apple.itunes.mediakind:7') 'daap.songalbumid:1034227734086706124')",
-    "(((((f.media_kind = 4 OR f.media_kind = 36) OR f.media_kind = 6) OR f.media_kind = 7) AND f.songalbumid = 1034227734086706124))"
+    "('daap.songartist!:' ('daap.testint:1','com.apple.itunes.extended-media-kind:32'))",
+    "((1 = 1) AND (f.testint = 1 OR (1 = 0)))"
   },
   {
     "(('com.apple.itunes.mediakind:1','com.apple.itunes.mediakind:32') 'daap.songartist!:')",
-    "((f.media_kind = 1 OR 1 = 0))"
+    "((f.testint = 1 OR (1 = 0)) AND (1 = 1))"
+  },
+  {
+    "('daap.songalbumid:0')",
+    "((1 = 1))"
+  },
+  {
+    "('daap.songalbumid!:0')",
+    "(f.testint <> 0)"
+  },
+
+  {
+    "('daap.songalbumid:1034227734086706124' ('com.apple.itunes.extended-media-kind:4','com.apple.itunes.extended-media-kind:36','com.apple.itunes.extended-media-kind:6','com.apple.itunes.extended-media-kind:7'))",
+    "(f.testint = 1034227734086706124 AND (f.testint = 4 OR f.testint = 36 OR f.testint = 6 OR f.testint = 7))"
+  },
+  {
+    "('daap.songartistid:6912769229437698119' ('com.apple.itunes.extended-media-kind:1','com.apple.itunes.extended-media-kind:32'))",
+    "(f.testint = 6912769229437698119 AND (f.testint = 1 OR (1 = 0)))"
+  },
+
+  {
+    "('com.apple.itunes.playlist-contains-media-type:1','com.apple.itunes.playlist-contains-media-type:32','com.apple.itunes.playlist-contains-media-type:128','com.apple.itunes.playlist-contains-media-type:1024','com.apple.itunes.playlist-contains-media-type:65537')",
+    "(f.testint = 1 OR f.testint = 32 OR f.testint = 128 OR f.testint = 1024 OR f.testint = 65537)"
+  },
+  {
+    "('daap.teststr:My Music on thundarr','com.apple.itunes.extended-media-kind@1','com.apple.itunes.extended-media-kind@32','com.apple.itunes.extended-media-kind@128','com.apple.itunes.extended-media-kind@65537')",
+    "(f.teststr = 'My Music on thundarr' OR f.testint = 1 OR (1 = 0) OR f.testint = 128 OR f.testint = 65537)"
+  },
+  {
+    "'daap.teststr:Kid\\'s Audiobooks'", // dmap.itemname
+    "f.teststr = 'Kid''s Audiobooks'"
+  },
+  {
+    "'daap.teststr:RadioBla'", // dmap.itemname
+    "f.teststr = 'RadioBla'"
+  },
+  {
+    "('daap.teststr:*cfbnk*' ('com.apple.itunes.mediakind:1','com.apple.itunes.mediakind:32') 'daap.songartist!:')",
+    "(f.teststr LIKE '%cfbnk%' AND (f.testint = 1 OR (1 = 0)) AND (1 = 1))"
+  },
+  {
+    "(('com.apple.itunes.mediakind:4','com.apple.itunes.mediakind:36','com.apple.itunes.mediakind:6','com.apple.itunes.mediakind:7') 'daap.songalbumid:1034227734086706124')",
+    "((f.testint = 4 OR f.testint = 36 OR f.testint = 6 OR f.testint = 7) AND f.testint = 1034227734086706124)"
+  },
+  {
+    "('daap.teststr:*Radio%B_la*2*')", // dmap.itemname
+    "(f.teststr LIKE '%Radio\\%B\\_la*2%') ESCAPE '\\'"
+  },
+  {
+    "('daap.teststr!:*Radio%Bla*2*')", // dmap.itemname
+    "(f.teststr NOT LIKE '%Radio\\%Bla*2%') ESCAPE '\\'"
   },
 };
 

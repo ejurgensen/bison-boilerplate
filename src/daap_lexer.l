@@ -42,6 +42,7 @@ re_operator (!?[:@])
 <IN_CRITERIA>{re_operator} { BEGIN IN_CRITERIA_VALUE; return (*yytext == '!' ? DAAP_T_NOT : DAAP_T_EQUAL); }
 <IN_CRITERIA>. { return *yytext; }
 
+<IN_CRITERIA_VALUE>\*{re_value}\*/{re_quote} { yylval->str = strdup(yytext); return DAAP_T_WILDCARD; }
 <IN_CRITERIA_VALUE>{re_value}/{re_quote} { yylval->str = strdup(yytext); return DAAP_T_VALUE; }
 <IN_CRITERIA_VALUE>{re_quote} { BEGIN INITIAL; return DAAP_T_QUOTE; }
 <IN_CRITERIA_VALUE>. { return *yytext; }
