@@ -117,7 +117,7 @@ static struct test_query daap_test_queries[] =
   },
   {
     "'daap.teststr:Kid\\'s Audiobooks'", // dmap.itemname
-    "f.teststr = 'Kid''s Audiobooks'"
+    "f.teststr = 'KidXXs Audiobooks'" // Should really become "f.teststr = 'Kid''s Audiobooks'"
   },
   {
     "'daap.teststr:RadioBla'", // dmap.itemname
@@ -178,11 +178,11 @@ smartpl_test_lexer(char *input, char *expected)
 #endif
 
 static void
-daap_test_parse(char *input, char *expected)
+daap_test_parse(int n, char *input, char *expected)
 {
   struct daap_result result;
 
-  printf("=== INPUT ===\n%s\n", input);
+  printf("=== INPUT %d ===\n%s\n", n, input);
 
   if (daap_lex_parse(&result, input) == 0)
     {
@@ -197,13 +197,13 @@ daap_test_parse(char *input, char *expected)
 }
 
 static void
-smartpl_test_parse(char *input, char *expected)
+smartpl_test_parse(int n, char *input, char *expected)
 {
   struct smartpl_result result;
   char buf[1024];
   int offset = 0;
 
-  printf("=== INPUT ===\n%s\n", input);
+  printf("=== INPUT %d ===\n%s\n", n, input);
 
   if (smartpl_lex_parse(&result, input) == 0)
     {
@@ -231,7 +231,7 @@ static void daap_test(int from, int to)
   for (int i = from; i <= to; i++)
     {
       daap_test_lexer(daap_test_queries[i].input, daap_test_queries[i].expected);
-      daap_test_parse(daap_test_queries[i].input, daap_test_queries[i].expected);
+      daap_test_parse(i, daap_test_queries[i].input, daap_test_queries[i].expected);
       printf("\n");
     }
 }
@@ -242,7 +242,7 @@ static void smartpl_test(int from, int to)
   for (int i = from; i <= to; i++)
     {
       smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
-      smartpl_test_parse(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      smartpl_test_parse(i, smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
       printf("\n");
     }
 }

@@ -1,3 +1,21 @@
+/*
+ * Copyright (C) 2021-2022 Espen Jürgensen <espenjurgensen@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 /* =========================== BOILERPLATE SECTION ===========================*/
 
 /* No global variables and yylex has scanner as argument */
@@ -25,7 +43,7 @@
 /* Convenience functions for caller to use instead of interfacing with lexer and
    parser directly */
 int daap_lex_cb(char *input, void (*cb)(int, const char *));
-int daap_lex_parse(struct daap_result *result, char *input);
+int daap_lex_parse(struct daap_result *result, const char *input);
 }
 
 /* Implementation of the convenience function and the parsing error function
@@ -53,7 +71,7 @@ int daap_lex_parse(struct daap_result *result, char *input);
     return 0;
   }
 
-  int daap_lex_parse(struct daap_result *result, char *input)
+  int daap_lex_parse(struct daap_result *result, const char *input)
   {
     YY_BUFFER_STATE buffer;
     yyscan_t scanner;
@@ -144,6 +162,7 @@ int daap_lex_parse(struct daap_result *result, char *input);
   }
 }
 
+%destructor { free($$); } <str>
 %destructor { ast_free($$); } <ast>
 
 
@@ -158,18 +177,12 @@ int daap_lex_parse(struct daap_result *result, char *input);
 #include <stdarg.h> // For vsnprintf
 }
 
-/* Definition of struct that will hold the parsing result */
-%code requires {
-struct daap_result {
-  char str[1024];
-  int offset;
-  char escape_char; // Character used to escape _ and % in a LIKE result str
-  int err;
-  char errmsg[128];
-};
-}
-
-%code {
+/* Dependencies, mocked or real */
+%code top {
+#ifndef DEBUG_PARSER_MOCK
+#include "daap_query_hash.h"
+#include "db.h"
+#else
 struct dmap_query_field_map {
   char *dmap_field;
   char *db_col;
@@ -185,6 +198,71 @@ static struct dmap_query_field_map * daap_query_field_lookup(char *tag, int len)
     return &testdqfm_str;
   else
     return &testdqfm_int;
+}
+
+static char * db_escape_string(const char *str)
+{
+  char *new = strdup(str);
+  char *ptr;
+  while ((ptr = strpbrk(new, "\\'")))
+   *ptr = 'X';
+  return new;
+}
+#endif
+}
+
+/* Definition of struct that will hold the parsing result */
+%code requires {
+struct daap_result {
+  char str[1024];
+  int offset;
+  char escape_char; // Character used to escape _ and % in a LIKE result str
+  int err;
+  char errmsg[128];
+};
+}
+
+%code {
+static int str_replace(char *s, size_t sz, const char *pattern, const char *replacement)
+{
+  char *ptr;
+  char *src;
+  char *dst;
+  size_t num;
+
+  if (!s)
+    return -1;
+
+  if (!pattern || !replacement)
+    return 0;
+
+  size_t p_len = strlen(pattern);
+  size_t r_len = strlen(replacement);
+  size_t s_len = strlen(s) + 1; // Incl terminator
+
+  ptr = s;
+  while ((ptr = strstr(ptr, pattern)))
+    {
+      // We will move the part of the string after the pattern from src to dst
+      src = ptr + p_len;
+      dst = ptr + r_len;
+
+      num = s_len - (src - s); // Number of bytes w/terminator we need to move
+      if (dst + num > s + sz)
+	return -1; // Not enough room
+
+      // Shift everything after the pattern to the right, use memmove since
+      // there might be an overlap
+      memmove(dst, src, num);
+
+      // Write replacement, no null terminater
+      memcpy(ptr, replacement, r_len);
+
+      // Advance ptr to avoid infinite looping
+      ptr = dst;
+    }
+
+  return 0;
 }
 
 static void sql_append(struct daap_result *result, const char *fmt, ...)
@@ -232,48 +310,8 @@ static bool clause_is_always_false(bool is_equal, const char *key, const char *v
   return false;
 }
 
-static int str_replace(char *s, size_t sz, const char *pattern, const char *replacement)
-{
-  char *ptr;
-  char *src;
-  char *dst;
-  size_t num;
-
-  if (!s)
-    return -1;
-
-  if (!pattern || !replacement)
-    return 0;
-
-  size_t p_len = strlen(pattern);
-  size_t r_len = strlen(replacement);
-  size_t s_len = strlen(s) + 1; // Incl terminator
-
-  ptr = s;
-  while ((ptr = strstr(ptr, pattern)))
-    {
-      // We will move the part of the string after the pattern from src to dst
-      src = ptr + p_len;
-      dst = ptr + r_len;
-
-      num = s_len - (src - s); // Number of bytes w/terminator we need to move
-      if (dst + num > s + sz)
-	return -1; // Not enough room
-
-      // Shift everything after the pattern to the right, use memmove since
-      // there might be an overlap
-      memmove(dst, src, num);
-
-      // Write replacement, no null terminater
-      memcpy(ptr, replacement, r_len);
-
-      // Advance ptr to avoid infinite looping
-      ptr = dst;
-    }
-
-  return 0;
-}
-
+// Switches the daap '*' to '%', and escapes any '%' or '_' that might be in the
+// string
 static void sql_like_escape(char **value, char *escape_char)
 {
   char *s = *value;
@@ -283,10 +321,11 @@ static void sql_like_escape(char **value, char *escape_char)
   if (len < 2)
     return; // Shouldn't ever happen since lexer should give strings w/wildcards
 
-  if (!strpbrk(s, "_%\\"))
+  // Fast path, nothing to escape
+  if (!strpbrk(s, "_%"))
     {
       s[0] = s[len - 1] = '%';
-      return; // Fast path, nothing to escape
+      return;
     }
 
   len = 2 * len; // Enough for every char to be escaped
@@ -298,16 +337,22 @@ static void sql_like_escape(char **value, char *escape_char)
   *value = new;
 }
 
+static void sql_str_escape(char **value)
+{
+  char *old = *value;
+  *value = db_escape_string(old);
+  free(old);
+}
+
 static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
 {
-  struct dmap_query_field_map *dqfm;
+  const struct dmap_query_field_map *dqfm;
   struct ast *k = a->l;
   struct ast *v = a->r;
   bool is_equal = (a->type == DAAP_T_EQUAL);
   char *key;
-  char *val;
 
-  if (!k || k->type != DAAP_T_KEY || !k->data)
+  if (!k || k->type != DAAP_T_KEY || !(key = (char *)k->data))
     {
       snprintf(result->errmsg, sizeof(result->errmsg), "Missing key in dmap input");
       result->err = -3;
@@ -320,15 +365,12 @@ static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
       return;
     }
 
-  key = (char *)k->data;
-  val = (char *)v->data;
-
-  if (clause_is_always_true(is_equal, key, val))
+  if (clause_is_always_true(is_equal, key, (char *)v->data))
     {
       sql_append(result, is_equal ? "(1 = 1)" : "(1 = 0)");
       return;
     }
-  else if (clause_is_always_false(is_equal, key, val))
+  else if (clause_is_always_false(is_equal, key, (char *)v->data))
     {
       sql_append(result, is_equal ? "(1 = 0)" : "(1 = 1)");
       return;
@@ -342,7 +384,7 @@ static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
       return;
     }
 
-  if (!dqfm->as_int && !val)
+  if (!dqfm->as_int && !v->data)
     {
       // If it is a string and there is no value we select for '' OR NULL
       sql_append(result, "(%s %s ''", dqfm->db_col, is_equal ? "=" : "<>");
@@ -353,12 +395,13 @@ static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
   else if (!dqfm->as_int && v->type == DAAP_T_WILDCARD)
     {
       sql_like_escape((char **)&v->data, &result->escape_char);
+      sql_str_escape((char **)&v->data);
       sql_append(result, "%s", dqfm->db_col);
       sql_append(result, is_equal ? " LIKE " : " NOT LIKE ");
       sql_append(result, "'%s'", (char *)v->data);
       return;
     }
-  else if (!val)
+  else if (!v->data)
     {
       snprintf(result->errmsg, sizeof(result->errmsg), "Missing value for int field '%s'", key);
       result->err = -5;
@@ -367,7 +410,14 @@ static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
 
   sql_append(result, "%s", dqfm->db_col);
   sql_append(result, is_equal ? " = " : " <> ");
-  sql_append(result, dqfm->as_int ? "%s" : "'%s'", val);
+  if (!dqfm->as_int)
+    {
+      sql_str_escape((char **)&v->data);
+      sql_append(result, "'%s'", (char *)v->data);
+      return;
+    }
+
+  sql_append(result, "%s", (char *)v->data);
 }
 
 /* Creates the parsing result from the AST */

@@ -24,8 +24,8 @@ AM_LFLAGS = --header-file=$(@:.c=.h)
 # --defines will work instead of -d.
 AM_YFLAGS = -d
 
-# Enable compiler warnings
-AM_CPPFLAGS = -Wall
+# Enable compiler warnings and mock dependencies in DAAP parser (for testing)
+AM_CPPFLAGS = -Wall -DDEBUG_PARSER_MOCK
 
 bin_PROGRAMS = boilerplate
 boilerplate_SOURCES = main.c $(LEXER_SRC) $(PARSER_SRC)

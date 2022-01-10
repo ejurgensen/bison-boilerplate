@@ -1,3 +1,21 @@
+/*
+ * Copyright (C) 2021-2022 Espen Jürgensen <espenjurgensen@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 /* =========================== BOILERPLATE SECTION ===========================*/
 
 /* No global variables and yylex has scanner as argument */
@@ -25,7 +43,7 @@
 /* Convenience functions for caller to use instead of interfacing with lexer and
    parser directly */
 int smartpl_lex_cb(char *input, void (*cb)(int, const char *));
-int smartpl_lex_parse(struct smartpl_result *result, char *input);
+int smartpl_lex_parse(struct smartpl_result *result, const char *input);
 }
 
 /* Implementation of the convenience function and the parsing error function
@@ -53,7 +71,7 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
     return 0;
   }
 
-  int smartpl_lex_parse(struct smartpl_result *result, char *input)
+  int smartpl_lex_parse(struct smartpl_result *result, const char *input)
   {
     YY_BUFFER_STATE buffer;
     yyscan_t scanner;
@@ -144,6 +162,7 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
   }
 }
 
+%destructor { free($$); } <str>
 %destructor { ast_free($$); } <ast>
 
 
@@ -151,7 +170,9 @@ int smartpl_lex_parse(struct smartpl_result *result, char *input);
 
 /* Includes required by the parser rules */
 %code top {
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE // For asprintf
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -381,6 +402,7 @@ static int result_set(struct smartpl_result *result, char *title, struct ast *cr
   ast_free(criteria);
   ast_free(having);
   ast_free(order);
+  ast_free(limit);
 
   return result->err;
 }

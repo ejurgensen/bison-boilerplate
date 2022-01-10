@@ -21,7 +21,7 @@
 /* Convenience function for caller to use instead of interfacing with lexer and
    parser directly */
 %code provides {
-int calc1_lex_parse(struct calc1_result *result, char *input);
+int calc1_lex_parse(struct calc1_result *result, const char *input);
 }
 
 /* Implementation of the convenience function and the parsing error function
@@ -30,7 +30,7 @@ int calc1_lex_parse(struct calc1_result *result, char *input);
   #define YYSTYPE CALC1_STYPE
   #include "calc1_lexer.h"
 
-  int calc1_lex_parse(struct calc1_result *result, char *input)
+  int calc1_lex_parse(struct calc1_result *result, const char *input)
   {
     YY_BUFFER_STATE buffer;
     yyscan_t scanner;
