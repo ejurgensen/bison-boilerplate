@@ -132,12 +132,12 @@ static struct test_query daap_test_queries[] =
     "((f.testint = 4 OR f.testint = 36 OR f.testint = 6 OR f.testint = 7) AND f.testint = 1034227734086706124)"
   },
   {
-    "('daap.teststr:*Radio%B_la*2*')", // dmap.itemname
-    "(f.teststr LIKE '%Radio\\%B\\_la*2%') ESCAPE '\\'"
+    "('daap.teststr:*Radio%B_la*2*' 'com.apple.itunes.mediakind:1')", // dmap.itemname
+    "(f.teststr LIKE '%Radio\\%B\\_la*2%' ESCAPE '\\' AND f.testint = 1)"
   },
   {
     "('daap.teststr!:*Radio%Bla*2*')", // dmap.itemname
-    "(f.teststr NOT LIKE '%Radio\\%Bla*2%') ESCAPE '\\'"
+    "(f.teststr NOT LIKE '%Radio\\%Bla*2%' ESCAPE '\\')"
   },
 };
 
