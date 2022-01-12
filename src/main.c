@@ -25,15 +25,15 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Local music\" {data_kind is spotify and media_kind is music}",
-    "Local music: WHERE f.data_kind = 2 AND f.media_kind = 0"
+    "Local music: WHERE f.data_kind = 2 AND f.media_kind = 1"
   },
   {
     "\"Unplayed podcasts and audiobooks\" { play_count = 0 and (media_kind is podcast or media_kind is audiobook) }",
-    "Unplayed podcasts and audiobooks: WHERE f.play_count = 0 AND (f.media_kind = 2 OR f.media_kind = 3)"
+    "Unplayed podcasts and audiobooks: WHERE f.play_count = 0 AND (f.media_kind = 4 OR f.media_kind = 8)"
   },
   {
     "\"Recently added music\" { media_kind is music order by time_added desc limit 10 }",
-    "Recently added music: WHERE f.media_kind = 0 ORDER BY f.time_added DESC LIMIT 10"
+    "Recently added music: WHERE f.media_kind = 1 ORDER BY f.time_added DESC LIMIT 10"
   },
   {
     "\"Recently added music\" { media_kind is music limit 20 order by time_added desc }",
@@ -41,7 +41,7 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
-    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 0 ORDER BY random() LIMIT 10"
+    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 1 ORDER BY random() LIMIT 10"
   },
   {
     "\"Files added after January 1, 2004\" { time_added after 2004-01-01 }",
@@ -53,11 +53,11 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Recently played audiobooks\" { time_played after last week and media_kind is audiobook }",
-    "Recently played audiobooks: WHERE f.time_played > strftime('%s', datetime('now', 'start of day', 'weekday 0', '-13 days', 'utc')) AND f.media_kind = 3"
+    "Recently played audiobooks: WHERE f.time_played > strftime('%s', datetime('now', 'start of day', 'weekday 0', '-13 days', 'utc')) AND f.media_kind = 8"
   },
   {
     "\"query\" { time_added after 8 weeks ago and media_kind is music having track_count > 3 order by time_added desc }",
-    "query: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND f.media_kind = 0 HAVING track_count > 3 ORDER BY f.time_added DESC"
+    "query: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND f.media_kind = 1 HAVING track_count > 3 ORDER BY f.time_added DESC"
   },
 };
 
