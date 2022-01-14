@@ -423,7 +423,8 @@ static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
 }
 
 /* Creates the parsing result from the AST */
-static void sql_from_ast(struct daap_result *result, struct ast *a) {
+static void sql_from_ast(struct daap_result *result, struct ast *a)
+{
   if (!a || result->err < 0)
     return;
 
