@@ -4,6 +4,7 @@
 
 #include "daap_parser.h"
 #include "smartpl_parser.h"
+#include "rsp_parser.h"
 
 #define DEBUG_SHOW_LEX 0
 
@@ -11,6 +12,66 @@ struct test_query
 {
   char *input;
   char *expected;
+};
+
+static struct test_query rsp_test_queries[] =
+{
+  {
+    "id=19344",
+    "f.id = 19344"
+  },
+  {
+    "album_artist=\"Queen\"",
+    "f.album_artist = 'Queen'"
+  },
+  {
+    "album_artist=\"Queen\" and album=\"A Kind Of Magic\"",
+    "f.album_artist = 'Queen' AND f.album = 'A Kind Of Magic'"
+  },
+  {
+    "album=\"\\\"D\\\" Is for Dubby: The Lustmord Dub Mixes\"",
+    "f.album = '\"D\" Is for Dubby: The Lustmord Dub Mixes'"
+  },
+  {
+    "genre=\"A Cappella\"",
+    "f.genre = 'A Cappella'"
+  },
+  {
+    "genre=\"A Cappella\" and album_artist=\"Ladysmith Black Mambazo\"",
+    "f.genre = 'A Cappella' AND f.album_artist = 'Ladysmith Black Mambazo'"
+  },
+  {
+    "genre=\"A Cappella\" and album_artist=\"Ladysmith Black Mambazo\" and album=\"Shaka Zulu\"",
+    "f.genre = 'A Cappella' AND f.album_artist = 'Ladysmith Black Mambazo' AND f.album = 'Shaka Zulu'"
+  },
+  {
+    "composer=\".\"",
+    "f.composer = '.'"
+  },
+  {
+    "title includes \"ac\"",
+    "f.title LIKE '%ac%'"
+  },
+  {
+    "album_artist=\"Ace Frehley\"",
+    "f.album_artist = 'Ace Frehley'"
+  },
+  {
+    "composer includes \"ace\"",
+    "f.composer LIKE '%ace%'"
+  },
+  {
+    "composer=\"Ace Frehley & Frank Munoz\"",
+    "f.composer = 'Ace Frehley & Frank Munoz'"
+  },
+  {
+    "genre includes \"ace\" or artist includes \"ace\" or composer includes \"ace\" or album includes \"ace\" or title includes \"ace\"",
+    "f.genre LIKE '%ace%' OR f.artist LIKE '%ace%' OR f.composer LIKE '%ace%' OR f.album LIKE '%ace%' OR f.title LIKE '%ace%'"
+  },
+  {
+    "composer=\".\\\"",
+    "f.composer = '.\\'"
+  },
 };
 
 static struct test_query smartpl_test_queries[] =
@@ -149,29 +210,15 @@ print_token_cb(int token, const char *s)
 }
 
 static void
-daap_test_lexer(char *input, char *expected)
+test_lexer(char *input, int (*lex_cb)(char *, void (*)(int, const char *)))
 {
   printf("Lexing %s\n", input);
-  daap_lex_cb(input, print_token_cb);
-  printf("Done lexing\n\n");
-}
-
-static void
-smartpl_test_lexer(char *input, char *expected)
-{
-  printf("Lexing %s\n", input);
-  smartpl_lex_cb(input, print_token_cb);
+  lex_cb(input, print_token_cb);
   printf("Done lexing\n\n");
 }
 #else
 static void
-daap_test_lexer(char *input, char *expected)
-{
-  return;
-}
-
-static void
-smartpl_test_lexer(char *input, char *expected)
+test_lexer(char *input, int (*lex_cb)(char *, void (*)(int, const char *)))
 {
   return;
 }
@@ -225,12 +272,31 @@ smartpl_test_parse(int n, char *input, char *expected)
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
+static void
+rsp_test_parse(int n, char *input, char *expected)
+{
+  struct rsp_result result;
+
+  printf("=== INPUT %d ===\n%s\n", n, input);
+
+  if (rsp_lex_parse(&result, input) == 0)
+    {
+      printf("=== RESULT ===\n%s\n", result.str);
+      if (strcmp(expected, result.str) == 0)
+        printf("=== SUCCES ===\n");
+      else
+        printf("==! UNEXPECTED !==\n%s\n", expected);
+    }
+  else
+    printf("==! FAILED !==\n%s\n", result.errmsg);
+}
+
 static void daap_test(int from, int to)
 {
   // daap_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      daap_test_lexer(daap_test_queries[i].input, daap_test_queries[i].expected);
+      test_lexer(smartpl_test_queries[i].input, daap_lex_cb);
       daap_test_parse(i, daap_test_queries[i].input, daap_test_queries[i].expected);
       printf("\n");
     }
@@ -241,8 +307,19 @@ static void smartpl_test(int from, int to)
   // smartpl_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      smartpl_test_lexer(smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      test_lexer(smartpl_test_queries[i].input, smartpl_lex_cb);
       smartpl_test_parse(i, smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      printf("\n");
+    }
+}
+
+static void rsp_test(int from, int to)
+{
+  // rsp_debug = 1;
+  for (int i = from; i <= to; i++)
+    {
+      test_lexer(rsp_test_queries[i].input, rsp_lex_cb);
+      rsp_test_parse(i, rsp_test_queries[i].input, rsp_test_queries[i].expected);
       printf("\n");
     }
 }
@@ -262,6 +339,8 @@ int main(int argc, char *argv[])
     daap_test(from, to);
   else if (strcmp(argv[1], "smartpl") == 0)
     smartpl_test(from, to);
+  else if (strcmp(argv[1], "rsp") == 0)
+    rsp_test(from, to);
   else
     goto bad_args;
 
