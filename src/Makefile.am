@@ -28,7 +28,7 @@ AM_YFLAGS = -d
 AM_CPPFLAGS = -Wall -DDEBUG_PARSER_MOCK
 
 bin_PROGRAMS = boilerplate
-boilerplate_SOURCES = main.c $(LEXER_SRC) $(PARSER_SRC)
+boilerplate_SOURCES = main.c owntonefunctions.c $(LEXER_SRC) $(PARSER_SRC)
 
 # Rule for generating lexer headers. $@ is an automatic variable that is equal
 # to the particular target name, so a header file name. Disabled because headers

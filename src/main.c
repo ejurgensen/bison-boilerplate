@@ -33,6 +33,10 @@ static struct test_query rsp_test_queries[] =
     "f.album = '\"D\" Is for Dubby: The Lustmord Dub Mixes'"
   },
   {
+    "album=\"=== \\\" \\\\- Backslashes and quotes galore -// \\\" ===\"",
+    "f.album = '=== \" \\\\- Backslashes and quotes galore -// \" ==='"
+  },
+  {
     "genre=\"A Cappella\"",
     "f.genre = 'A Cappella'"
   },
@@ -70,7 +74,7 @@ static struct test_query rsp_test_queries[] =
   },
   {
     "composer=\".\\\"",
-    "f.composer = '.\\'"
+    "f.composer = '.X'" // X would be actually be backslash
   },
 };
 
@@ -119,6 +123,10 @@ static struct test_query smartpl_test_queries[] =
   {
     "\"query\" { time_added after 8 weeks ago and media_kind is music having track_count > 3 order by time_added desc }",
     "query: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND f.media_kind = 1 HAVING track_count > 3 ORDER BY f.time_added DESC"
+  },
+  {
+    "\"techno 2016\" { genre includes \"99% _cool_ techno\" }",
+    "techno 2016: WHERE f.genre LIKE '%99\\% \\_cool\\_ techno%' ESCAPE '\\'"
   },
 };
 
@@ -291,35 +299,35 @@ rsp_test_parse(int n, char *input, char *expected)
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
-static void daap_test(int from, int to)
+static void daap_test(int from, int to, struct test_query *queries)
 {
   // daap_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      test_lexer(smartpl_test_queries[i].input, daap_lex_cb);
-      daap_test_parse(i, daap_test_queries[i].input, daap_test_queries[i].expected);
+      test_lexer(queries[i].input, daap_lex_cb);
+      daap_test_parse(i, queries[i].input, queries[i].expected);
       printf("\n");
     }
 }
 
-static void smartpl_test(int from, int to)
+static void smartpl_test(int from, int to, struct test_query *queries)
 {
   // smartpl_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      test_lexer(smartpl_test_queries[i].input, smartpl_lex_cb);
-      smartpl_test_parse(i, smartpl_test_queries[i].input, smartpl_test_queries[i].expected);
+      test_lexer(queries[i].input, smartpl_lex_cb);
+      smartpl_test_parse(i, queries[i].input, queries[i].expected);
       printf("\n");
     }
 }
 
-static void rsp_test(int from, int to)
+static void rsp_test(int from, int to, struct test_query *queries)
 {
   // rsp_debug = 1;
   for (int i = from; i <= to; i++)
     {
-      test_lexer(rsp_test_queries[i].input, rsp_lex_cb);
-      rsp_test_parse(i, rsp_test_queries[i].input, rsp_test_queries[i].expected);
+      test_lexer(queries[i].input, rsp_lex_cb);
+      rsp_test_parse(i, queries[i].input, queries[i].expected);
       printf("\n");
     }
 }
@@ -336,11 +344,11 @@ int main(int argc, char *argv[])
     goto bad_args;
 
   if (strcmp(argv[1], "daap") == 0)
-    daap_test(from, to);
+    daap_test(from, to, daap_test_queries);
   else if (strcmp(argv[1], "smartpl") == 0)
-    smartpl_test(from, to);
+    smartpl_test(from, to, smartpl_test_queries);
   else if (strcmp(argv[1], "rsp") == 0)
-    rsp_test(from, to);
+    rsp_test(from, to, rsp_test_queries);
   else
     goto bad_args;
 
