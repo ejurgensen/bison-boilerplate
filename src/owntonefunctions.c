@@ -16,12 +16,14 @@ struct dmap_query_field_map * daap_query_field_lookup(char *tag, int len)
     return &testdqfm_int;
 }
 
+// Simplified escape function for testing
 char * db_escape_string(const char *str)
 {
-  char *new = strdup(str);
-  char *ptr;
-  while ((ptr = strpbrk(new, "\\'")))
-   *ptr = 'X';
+  int newlen = 2 * strlen(str);
+  char *new = malloc(newlen);
+
+  memcpy(new, str, strlen(str) + 1);
+  str_replace(new, newlen, "'", "''");
   return new;
 }
 

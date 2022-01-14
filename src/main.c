@@ -6,6 +6,11 @@
 #include "smartpl_parser.h"
 #include "rsp_parser.h"
 
+#define ARRAY_SIZE(x) ((unsigned int)(sizeof(x) / sizeof((x)[0])))
+#ifndef MIN
+# define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
 #define DEBUG_SHOW_LEX 0
 
 struct test_query
@@ -74,7 +79,7 @@ static struct test_query rsp_test_queries[] =
   },
   {
     "composer=\".\\\"",
-    "f.composer = '.X'" // X would be actually be backslash
+    "f.composer = '.\\'"
   },
 };
 
@@ -102,7 +107,7 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Recently added music\" { media_kind is music limit 20 order by time_added desc }",
-    "[invalid syntax]"
+    "[FAIL]"
   },
   {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
@@ -186,7 +191,7 @@ static struct test_query daap_test_queries[] =
   },
   {
     "'daap.teststr:Kid\\'s Audiobooks'", // dmap.itemname
-    "f.teststr = 'KidXXs Audiobooks'" // Should really become "f.teststr = 'Kid''s Audiobooks'"
+    "f.teststr = 'Kid''s Audiobooks'"
   },
   {
     "'daap.teststr:RadioBla'", // dmap.itemname
@@ -247,6 +252,8 @@ daap_test_parse(int n, char *input, char *expected)
       else
         printf("==! UNEXPECTED !==\n%s\n", expected);
     }
+  else if (strcmp(expected, "[FAIL]") == 0)
+    printf("=== SUCCES ===\n");
   else
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
@@ -276,6 +283,8 @@ smartpl_test_parse(int n, char *input, char *expected)
       else
         printf("==! UNEXPECTED !==\n%s\n", expected);
     }
+  else if (strcmp(expected, "[FAIL]") == 0)
+    printf("=== SUCCES ===\n");
   else
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
@@ -295,14 +304,16 @@ rsp_test_parse(int n, char *input, char *expected)
       else
         printf("==! UNEXPECTED !==\n%s\n", expected);
     }
+  else if (strcmp(expected, "[FAIL]") == 0)
+    printf("=== SUCCES ===\n");
   else
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
-static void daap_test(int from, int to, struct test_query *queries)
+static void daap_test(int from, int to, struct test_query *queries, int n)
 {
   // daap_debug = 1;
-  for (int i = from; i <= to; i++)
+  for (int i = from; i <= MIN(to, n - 1); i++)
     {
       test_lexer(queries[i].input, daap_lex_cb);
       daap_test_parse(i, queries[i].input, queries[i].expected);
@@ -310,10 +321,10 @@ static void daap_test(int from, int to, struct test_query *queries)
     }
 }
 
-static void smartpl_test(int from, int to, struct test_query *queries)
+static void smartpl_test(int from, int to, struct test_query *queries, int n)
 {
   // smartpl_debug = 1;
-  for (int i = from; i <= to; i++)
+  for (int i = from; i <= MIN(to, n - 1); i++)
     {
       test_lexer(queries[i].input, smartpl_lex_cb);
       smartpl_test_parse(i, queries[i].input, queries[i].expected);
@@ -321,10 +332,10 @@ static void smartpl_test(int from, int to, struct test_query *queries)
     }
 }
 
-static void rsp_test(int from, int to, struct test_query *queries)
+static void rsp_test(int from, int to, struct test_query *queries, int n)
 {
   // rsp_debug = 1;
-  for (int i = from; i <= to; i++)
+  for (int i = from; i <= MIN(to, n - 1); i++)
     {
       test_lexer(queries[i].input, rsp_lex_cb);
       rsp_test_parse(i, queries[i].input, queries[i].expected);
@@ -344,11 +355,11 @@ int main(int argc, char *argv[])
     goto bad_args;
 
   if (strcmp(argv[1], "daap") == 0)
-    daap_test(from, to, daap_test_queries);
+    daap_test(from, to, daap_test_queries, ARRAY_SIZE(daap_test_queries));
   else if (strcmp(argv[1], "smartpl") == 0)
-    smartpl_test(from, to, smartpl_test_queries);
+    smartpl_test(from, to, smartpl_test_queries, ARRAY_SIZE(smartpl_test_queries));
   else if (strcmp(argv[1], "rsp") == 0)
-    rsp_test(from, to, rsp_test_queries);
+    rsp_test(from, to, rsp_test_queries, ARRAY_SIZE(rsp_test_queries));
   else
     goto bad_args;
 

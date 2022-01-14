@@ -235,11 +235,13 @@ static void sql_like_escape(char **value, char *escape_char)
 
 static void sql_str_escape(char **value)
 {
-  // TODO unescape first
+  char *s = *value;
 
-  char *old = *value;
-  *value = db_escape_string(old);
-  free(old);
+  if (strchr(s, '\"'))
+    str_replace(s, strlen(s) + 1, "\\\"", "\""); // See test case 3
+
+  *value = db_escape_string(s);
+  free(s);
 }
 
 static void sql_append(struct rsp_result *result, const char *fmt, ...)

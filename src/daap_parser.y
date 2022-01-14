@@ -275,9 +275,13 @@ static void sql_like_escape(char **value, char *escape_char)
 
 static void sql_str_escape(char **value)
 {
-  char *old = *value;
-  *value = db_escape_string(old);
-  free(old);
+  char *s = *value;
+
+  if (strchr(s, '\''))
+    str_replace(s, strlen(s) + 1, "\\'", "'"); // See Kid's audiobooks test case
+
+  *value = db_escape_string(s);
+  free(s);
 }
 
 static void sql_append_dmap_clause(struct daap_result *result, struct ast *a)
