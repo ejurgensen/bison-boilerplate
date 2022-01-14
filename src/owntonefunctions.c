@@ -23,11 +23,11 @@ char * db_escape_string(const char *str)
   char *new = malloc(newlen);
 
   memcpy(new, str, strlen(str) + 1);
-  str_replace(new, newlen, "'", "''");
+  safe_snreplace(new, newlen, "'", "''");
   return new;
 }
 
-int str_replace(char *s, size_t sz, const char *pattern, const char *replacement)
+int safe_snreplace(char *s, size_t sz, const char *pattern, const char *replacement)
 {
   char *ptr;
   char *src;

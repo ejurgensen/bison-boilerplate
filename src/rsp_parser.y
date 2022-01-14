@@ -184,6 +184,7 @@ int rsp_lex_parse(struct rsp_result *result, const char *input);
 %code top {
 #ifndef DEBUG_PARSER_MOCK
 #include "db.h"
+#include "misc.h"
 #else
 #include "owntonefunctions.h"
 #endif
@@ -227,8 +228,8 @@ static void sql_like_escape(char **value, char *escape_char)
 
   len = 2 * len; // Enough for every char to be escaped
   new = realloc(s, len);
-  str_replace(new, len, "%", "\\%");
-  str_replace(new, len, "_", "\\_");
+  safe_snreplace(new, len, "%", "\\%");
+  safe_snreplace(new, len, "_", "\\_");
   *escape_char = '\\';
   *value = new;
 }
@@ -238,7 +239,7 @@ static void sql_str_escape(char **value)
   char *s = *value;
 
   if (strchr(s, '\"'))
-    str_replace(s, strlen(s) + 1, "\\\"", "\""); // See test case 3
+    safe_snreplace(s, strlen(s) + 1, "\\\"", "\""); // See test case 3
 
   *value = db_escape_string(s);
   free(s);
