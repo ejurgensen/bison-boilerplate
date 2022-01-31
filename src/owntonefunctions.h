@@ -5,6 +5,13 @@ enum data_kind {
   DATA_KIND_PIPE = 3,
 };
 
+enum scan_kind {
+  SCAN_KIND_UNKNOWN = 0,
+  SCAN_KIND_FILES = 1,
+  SCAN_KIND_SPOTIFY = 2,
+  SCAN_KIND_RSS = 3,
+};
+
 enum media_kind {
   MEDIA_KIND_MUSIC = 1,
   MEDIA_KIND_MOVIE = 2,

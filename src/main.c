@@ -133,6 +133,10 @@ static struct test_query smartpl_test_queries[] =
     "\"techno 2016\" { genre includes \"99% _cool_ techno\" }",
     "techno 2016: WHERE f.genre LIKE '%99\\% \\_cool\\_ techno%' ESCAPE '\\'"
   },
+  {
+    "\"query\" { scan_kind is rss }",
+    "query: WHERE f.scan_kind = 3"
+  },
 };
 
 

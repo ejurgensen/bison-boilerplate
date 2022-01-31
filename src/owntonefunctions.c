@@ -55,12 +55,14 @@ int safe_snreplace(char *s, size_t sz, const char *pattern, const char *replacem
       if (dst + num > s + sz)
 	return -1; // Not enough room
 
-      // Shift everything after the pattern to the right, use memmove since
-      // there might be an overlap
+      // Move everything after the pattern, use memmove since there might be an overlap
       memmove(dst, src, num);
 
       // Write replacement, no null terminater
       memcpy(ptr, replacement, r_len);
+
+      // String now has a new length
+      s_len += r_len - p_len;
 
       // Advance ptr to avoid infinite looping
       ptr = dst;
