@@ -25,6 +25,9 @@ To create a parser with the boilerplate, search and replace "calc1_" with your
 name, and write your lexing and parsing implementation in the sections of the .l
 and .y files marked as non-boilerplate.
 
+You can also check the [owntone1](https://github.com/ejurgensen/bison-boilerplate/tree/owntone1)
+branch if you want to see the actual parsers I use the boilerplate code for.
+
 Credit to the following for useful info/input:
 * https://begriffs.com/posts/2021-11-28-practical-parsing.html
 * https://github.com/meyerd/flex-bison-example
