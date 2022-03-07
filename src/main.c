@@ -87,23 +87,23 @@ static struct test_query smartpl_test_queries[] =
 {
   {
     "\"tech1\" { genre includes \"techno\" and not artist includes \"zombie\" and album is \"test\" }",
-    "tech1: WHERE f.genre LIKE '%techno%' AND f.artist NOT LIKE '%zombie%' AND f.album = 'test'"
+    "tech1: WHERE genre LIKE '%techno%' AND artist NOT LIKE '%zombie%' AND album = 'test'"
   },
   {
     "\"techno 2015\" {\ngenre includes \"techno\"\n and artist includes \"zombie\"\nand not genre includes \"industrial\"\n}\n",
-    "techno 2015: WHERE f.genre LIKE '%techno%' AND f.artist LIKE '%zombie%' AND f.genre NOT LIKE '%industrial%'"
+    "techno 2015: WHERE genre LIKE '%techno%' AND artist LIKE '%zombie%' AND genre NOT LIKE '%industrial%'"
   },
   {
     "\"Local music\" {data_kind is spotify and media_kind is music}",
-    "Local music: WHERE f.data_kind = 2 AND f.media_kind = 1"
+    "Local music: WHERE data_kind = 2 AND media_kind = 1"
   },
   {
     "\"Unplayed podcasts and audiobooks\" { play_count = 0 and (media_kind is podcast or media_kind is audiobook) }",
-    "Unplayed podcasts and audiobooks: WHERE f.play_count = 0 AND (f.media_kind = 4 OR f.media_kind = 8)"
+    "Unplayed podcasts and audiobooks: WHERE play_count = 0 AND (media_kind = 4 OR media_kind = 8)"
   },
   {
     "\"Recently added music\" { media_kind is music order by time_added desc limit 10 }",
-    "Recently added music: WHERE f.media_kind = 1 ORDER BY f.time_added DESC LIMIT 10"
+    "Recently added music: WHERE media_kind = 1 ORDER BY time_added DESC LIMIT 10"
   },
   {
     "\"Recently added music\" { media_kind is music limit 20 order by time_added desc }",
@@ -111,31 +111,39 @@ static struct test_query smartpl_test_queries[] =
   },
   {
     "\"Random 10 Rated Pop songs\" { rating > 0 and  genre is \"Pop\" and media_kind is music  order by random desc limit 10 }",
-    "Random 10 Rated Pop songs: WHERE f.rating > 0 AND f.genre = 'Pop' AND f.media_kind = 1 ORDER BY random() LIMIT 10"
+    "Random 10 Rated Pop songs: WHERE rating > 0 AND genre = 'Pop' AND media_kind = 1 ORDER BY random() LIMIT 10"
   },
   {
     "\"Files added after January 1, 2004\" { time_added after 2004-01-01 }",
-    "Files added after January 1, 2004: WHERE f.time_added > strftime('%s', datetime('2004-01-01', 'utc'))"
+    "Files added after January 1, 2004: WHERE time_added > strftime('%s', datetime('2004-01-01', 'utc'))"
   },
   {
     "\"Recently Added\" { time_added after 2 weeks ago }",
-    "Recently Added: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-14 days', 'utc'))"
+    "Recently Added: WHERE time_added > strftime('%s', datetime('now', 'start of day', '-14 days', 'utc'))"
   },
   {
     "\"Recently played audiobooks\" { time_played after last week and media_kind is audiobook }",
-    "Recently played audiobooks: WHERE f.time_played > strftime('%s', datetime('now', 'start of day', 'weekday 0', '-13 days', 'utc')) AND f.media_kind = 8"
+    "Recently played audiobooks: WHERE time_played > strftime('%s', datetime('now', 'start of day', 'weekday 0', '-13 days', 'utc')) AND media_kind = 8"
   },
   {
     "\"query\" { time_added after 8 weeks ago and media_kind is music having track_count > 3 order by time_added desc }",
-    "query: WHERE f.time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND f.media_kind = 1 HAVING track_count > 3 ORDER BY f.time_added DESC"
+    "query: WHERE time_added > strftime('%s', datetime('now', 'start of day', '-56 days', 'utc')) AND media_kind = 1 HAVING track_count > 3 ORDER BY time_added DESC"
   },
   {
     "\"techno 2016\" { genre includes \"99% _cool_ techno\" }",
-    "techno 2016: WHERE f.genre LIKE '%99\\% \\_cool\\_ techno%' ESCAPE '\\'"
+    "techno 2016: WHERE genre LIKE '%99\\% \\_cool\\_ techno%' ESCAPE '\\'"
   },
   {
     "\"query\" { scan_kind is rss }",
-    "query: WHERE f.scan_kind = 3"
+    "query: WHERE scan_kind = 3"
+  },
+  {
+    "\"techno 3001\" { path starts with \"99% _cool_ techno\" }",
+    "techno 3001: WHERE path LIKE '99\\% \\_cool\\_ techno%' ESCAPE '\\'"
+  },
+  {
+    "\"techno 3002\" { path ends with \".mp3\" }",
+    "techno 3002: WHERE path LIKE '%.mp3'"
   },
 };
 
