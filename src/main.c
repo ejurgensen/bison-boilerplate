@@ -145,6 +145,18 @@ static struct test_query smartpl_test_queries[] =
     "\"techno 3002\" { path ends with \".mp3\" }",
     "techno 3002: WHERE path LIKE '%.mp3'"
   },
+  {
+    "\"Selected tracks\" {\r\n media_kind is music\r\n and not (genre is \"Folk\" or genre is \"World\")\r\n }",
+    "Selected tracks: WHERE media_kind = 1 AND NOT (genre = 'Folk' OR genre = 'World')"
+  },
+  {
+    "\"Avoid\" { not (genre is \"Folk\" or genre is \"World\") }",
+    "Avoid: WHERE NOT (genre = 'Folk' OR genre = 'World')"
+  },
+  {
+    "\"Avoid 2\" { not (genre is \"Folk\" and not (artist is \"Great\" or artist is \"Excellent\")) }",
+    "Avoid 2: WHERE NOT (genre = 'Folk' AND NOT (artist = 'Great' OR artist = 'Excellent'))"
+  },
 };
 
 
