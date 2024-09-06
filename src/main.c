@@ -5,6 +5,7 @@
 #include "daap_parser.h"
 #include "smartpl_parser.h"
 #include "rsp_parser.h"
+#include "mpd_parser.h"
 
 #define ARRAY_SIZE(x) ((unsigned int)(sizeof(x) / sizeof((x)[0])))
 #ifndef MIN
@@ -239,6 +240,46 @@ static struct test_query daap_test_queries[] =
   },
 };
 
+static struct test_query mpd_test_queries[] =
+{
+  {
+    "search (artist == 'john') sort -artist window 9:10",
+    ""
+  },
+  {
+    "find ((artist == 'john') OR ((album contains 'mary') AND !(albumartist != 'legacy')))",
+    ""
+  },
+  {
+    "count (artist == \"doublequote\") group album",
+    ""
+  },
+  {
+    "search (!(any contains 'cat'))",
+    ""
+  },
+  {
+    "search (any == 'dog')",
+    ""
+  },
+  {
+    "findadd (added-since '2022-01-01') position -1",
+    ""
+  },
+  {
+    "list (base '/highway/to/hell')",
+    ""
+  },
+  {
+    "list album group albumartist",
+    ""
+  },
+  {
+    "find (AudioFormat == '44100:16:2')",
+    ""
+  },
+};
+
 #if DEBUG_SHOW_LEX
 static void
 print_token_cb(int token, const char *s)
@@ -334,6 +375,44 @@ rsp_test_parse(int n, char *input, char *expected)
     printf("==! FAILED !==\n%s\n", result.errmsg);
 }
 
+static void
+mpd_test_parse(int n, char *input, char *expected)
+{
+  struct mpd_result result;
+  char buf[1024];
+  int offset = 0;
+
+  printf("=== INPUT %d ===\n%s\n", n, input);
+
+  if (mpd_lex_parse(&result, input) == 0)
+    {
+      printf("=== RESULT ===\n");
+      if (result.select)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, "SELECT %s", result.select);
+      if (result.where)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " WHERE %s", result.where);
+      if (result.order)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " ORDER BY %s", result.order);
+      if (result.group)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " GROUP BY %s", result.group);
+      if (result.offset)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " OFFSET %d", result.offset);
+      if (result.limit)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " LIMIT %d", result.limit);
+      if (result.position)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " @POS %d", result.position);
+      printf("%s\n", buf);
+      if (strcmp(expected, buf) == 0)
+        printf("=== SUCCES ===\n");
+      else
+        printf("==! UNEXPECTED !==\n%s\n", expected);
+    }
+  else if (strcmp(expected, "[FAIL]") == 0)
+    printf("=== SUCCES ===\n");
+  else
+    printf("==! FAILED !==\n%s\n", result.errmsg);
+}
+
 static void daap_test(int from, int to, struct test_query *queries, int n)
 {
   // daap_debug = 1;
@@ -367,6 +446,17 @@ static void rsp_test(int from, int to, struct test_query *queries, int n)
     }
 }
 
+static void mpd_test(int from, int to, struct test_query *queries, int n)
+{
+  // mpd_debug = 1;
+  for (int i = from; i <= MIN(to, n - 1); i++)
+    {
+      test_lexer(queries[i].input, mpd_lex_cb);
+      mpd_test_parse(i, queries[i].input, queries[i].expected);
+      printf("\n");
+    }
+}
+
 int main(int argc, char *argv[])
 {
   int from, to;
@@ -384,6 +474,8 @@ int main(int argc, char *argv[])
     smartpl_test(from, to, smartpl_test_queries, ARRAY_SIZE(smartpl_test_queries));
   else if (strcmp(argv[1], "rsp") == 0)
     rsp_test(from, to, rsp_test_queries, ARRAY_SIZE(rsp_test_queries));
+  else if (strcmp(argv[1], "mpd") == 0)
+    mpd_test(from, to, mpd_test_queries, ARRAY_SIZE(mpd_test_queries));
   else
     goto bad_args;
 
