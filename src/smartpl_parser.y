@@ -200,7 +200,7 @@ int smartpl_lex_parse(struct smartpl_result *result, const char *input);
  */
 %code requires {
 struct result_part {
-  char str[4096];
+  char str[8192];
   int offset;
 };
 
@@ -568,8 +568,8 @@ playlist:
 
 criteria: criteria SMARTPL_T_AND criteria                   { $$ = ast_new(SMARTPL_T_AND, $1, $3); }
 | criteria SMARTPL_T_OR criteria                            { $$ = ast_new(SMARTPL_T_OR, $1, $3); }
-| SMARTPL_T_NOT criteria                                    { struct ast *a = $2; a->type |= INVERT_MASK; $$ = $2; }
 | '(' criteria ')'                                          { $$ = ast_new(SMARTPL_T_PARENS, $2, NULL); }
+| SMARTPL_T_NOT criteria                                    { struct ast *a = $2; a->type |= INVERT_MASK; $$ = $2; }
 | predicate
 ;
 
