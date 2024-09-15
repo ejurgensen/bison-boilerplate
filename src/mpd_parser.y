@@ -227,7 +227,22 @@ struct mpd_result {
   char errmsg[128];
 };
 
+enum mpd_type {
+  MPD_TYPE_INT,
+  MPD_TYPE_STRING,
+  MPD_TYPE_SPECIAL,
+};
+
+struct mpd_tag_map {
+  const char *name;
+  const char *dbcol;
+  enum mpd_type type;
+  int dbmfi_offset;
+};
+
 char *mpd_parser_quoted(const char *str);
+struct mpd_tag_map *mpd_parser_tag_from_dbcol(const char *dbcol);
+void mpd_parser_enum_tagtypes(void (*func)(struct mpd_tag_map *, void *), void *arg);
 }
 
 %code {
@@ -243,58 +258,83 @@ enum sql_append_type {
   SQL_APPEND_PARENS,
 };
 
-struct tag_to_db_map {
-  const char *tag;
-  const char *db_name;
-};
-
-static struct tag_to_db_map tag_to_db_map[] =
+static struct mpd_tag_map mpd_tag_map[] =
 {
-  { "Artist",           "f.artist",             },
-  { "ArtistSort",       "f.artist_sort",        },
-  { "AlbumArtist",      "f.album_artist",       },
-  { "AlbumArtistSort",  "f.album_artist_sort",  },
-  { "Album",            "f.album",              },
-  { "AlbumSort",        "f.album_sort",         },
-  { "Title",            "f.title",              },
-  { "TitleSort",        "f.title_sort",         },
-  { "Genre",            "f.genre",              },
-  { "Composer",         "f.composer",           },
-  { "ComposerSort",     "f.composer_sort",      },
-  { "file",             "f.virtual_path",       },
+  { "Artist",             "f.artist",             MPD_TYPE_STRING,     dbmfi_offsetof(artist),            },
+  { "ArtistSort",         "f.artist_sort",        MPD_TYPE_STRING,     dbmfi_offsetof(artist_sort),       },
+  { "AlbumArtist",        "f.album_artist",       MPD_TYPE_STRING,     dbmfi_offsetof(album_artist),      },
+  { "AlbumArtistSort",    "f.album_artist_sort",  MPD_TYPE_STRING,     dbmfi_offsetof(album_artist_sort), },
+  { "Album",              "f.album",              MPD_TYPE_STRING,     dbmfi_offsetof(album),             },
+  { "AlbumSort",          "f.album_sort",         MPD_TYPE_STRING,     dbmfi_offsetof(album_sort),        },
+  { "Title",              "f.title",              MPD_TYPE_STRING,     dbmfi_offsetof(title),             },
+  { "TitleSort",          "f.title_sort",         MPD_TYPE_STRING,     dbmfi_offsetof(title_sort),        },
+  { "Genre",              "f.genre",              MPD_TYPE_STRING,     dbmfi_offsetof(genre),             },
+  { "Composer",           "f.composer",           MPD_TYPE_STRING,     dbmfi_offsetof(composer),          },
+  { "ComposerSort",       "f.composer_sort",      MPD_TYPE_STRING,     dbmfi_offsetof(composer_sort),     },
+  { "file",               "f.virtual_path",       MPD_TYPE_SPECIAL,    dbmfi_offsetof(virtual_path),      },
 
-  { "base",             "f.virtual_path",       },
+  { "base",               "f.virtual_path",       MPD_TYPE_SPECIAL,    dbmfi_offsetof(virtual_path),      },
 
-  { "Track",            "f.track",              },
-  { "Disc",             "f.disc",               },
-  { "Date",             "f.year",               },
+  { "Track",              "f.track",              MPD_TYPE_INT,        dbmfi_offsetof(track),             },
+  { "Disc",               "f.disc",               MPD_TYPE_INT,        dbmfi_offsetof(disc),              },
+  { "Date",               "f.year",               MPD_TYPE_INT,        dbmfi_offsetof(year),              },
 
-  { "modified-since",   "f.time_modified",      },
-  { "added-since",      "f.time_added",         },
+  { "modified-since",     "f.time_modified",      MPD_TYPE_SPECIAL,    dbmfi_offsetof(time_modified),     },
+  { "added-since",        "f.time_added",         MPD_TYPE_SPECIAL,    dbmfi_offsetof(time_added),        },
 
   // AudioFormat tag
-  { "samplerate",       "f.samplerate",         },
-  { "bits_per_sample",  "f.bits_per_sample",    },
-  { "channels",         "f.channels",           },
+  { "samplerate",         "f.samplerate",         MPD_TYPE_INT,        dbmfi_offsetof(samplerate),        },
+  { "bits_per_sample",    "f.bits_per_sample",    MPD_TYPE_INT,        dbmfi_offsetof(bits_per_sample),   },
+  { "channels",           "f.channels",           MPD_TYPE_INT,        dbmfi_offsetof(channels),          },
 
-  { NULL                                        },
+  { NULL },
 };
 
-static const char * tag_to_db(const char *tag)
+static const char *
+tag_to_dbcol(const char *tag)
 {
-  struct tag_to_db_map *mapptr;
+  struct mpd_tag_map *mapptr;
 
-  for (mapptr = tag_to_db_map; mapptr->tag; mapptr++)
+  for (mapptr = mpd_tag_map; mapptr->name; mapptr++)
     {
-      if (strcasecmp(tag, mapptr->tag) == 0)
-        return mapptr->db_name;
+      if (strcasecmp(tag, mapptr->name) == 0)
+        return mapptr->dbcol;
     }
 
   return "error"; // Should never happen, means tag_to_db_map is out of sync with lexer
 }
 
+struct mpd_tag_map *
+mpd_parser_tag_from_dbcol(const char *dbcol)
+{
+  struct mpd_tag_map *mapptr;
+
+  if (!dbcol)
+    return NULL;
+
+  for (mapptr = mpd_tag_map; mapptr->name; mapptr++)
+    {
+      if (strcasecmp(dbcol, mapptr->dbcol) == 0)
+        return mapptr;
+    }
+
+  return NULL;
+}
+
+void
+mpd_parser_enum_tagtypes(void (*func)(struct mpd_tag_map *, void *), void *arg)
+{
+  struct mpd_tag_map *mapptr;
+
+  for (mapptr = mpd_tag_map; mapptr->name; mapptr++)
+    {
+      func(mapptr, arg);
+    }
+}
+
 // Remove any backslash that was used to escape single or double quotes
-char *mpd_parser_quoted(const char *str)
+char *
+mpd_parser_quoted(const char *str)
 {
   char *out = strdup(str + 1); // Copy from after the first quote
   size_t len = strlen(out);
@@ -401,7 +441,7 @@ static void sql_append_recursive(struct mpd_result *result, struct mpd_result_pa
     case SQL_APPEND_FIELD:
       assert(a->l == NULL);
       assert(a->r == NULL);
-      sql_append(result, part, "%s", tag_to_db((char *)a->data));
+      sql_append(result, part, "%s", tag_to_dbcol((char *)a->data));
       break;
     case SQL_APPEND_STR:
       assert(a->l == NULL);
@@ -425,7 +465,7 @@ static void sql_append_recursive(struct mpd_result *result, struct mpd_result_pa
       assert(a->l == NULL);
       assert(a->r == NULL);
       if (a->data)
-        sql_append(result, part, "%s ", tag_to_db((char *)a->data));
+        sql_append(result, part, "%s ", tag_to_dbcol((char *)a->data));
       sql_append(result, part, "%s", is_not ? op_not : op);
       break;
     case SQL_APPEND_PARENS:
@@ -496,7 +536,7 @@ static int result_set(struct mpd_result *result, char *tagtype, struct ast *filt
 
   if (tagtype)
     {
-      snprintf(result->tagtype_buf, sizeof(result->tagtype_buf), "%s", tag_to_db(tagtype));
+      snprintf(result->tagtype_buf, sizeof(result->tagtype_buf), "%s", tag_to_dbcol(tagtype));
       result->tagtype = result->tagtype_buf;
     }
 
@@ -510,7 +550,7 @@ static int result_set(struct mpd_result *result, char *tagtype, struct ast *filt
 
   sql_from_ast(result, &result->group_part, group);
   if (tagtype)
-    sql_append(result, &result->group_part, result->group_part.offset ? " , %s" : "%s", tag_to_db(tagtype));
+    sql_append(result, &result->group_part, result->group_part.offset ? " , %s" : "%s", tag_to_dbcol(tagtype));
   if (result->group_part.offset)
     result->group = result->group_part.str;
 
