@@ -205,25 +205,29 @@ struct mpd_result_part {
 };
 
 struct mpd_result {
-  struct mpd_result_part select_part;
   struct mpd_result_part where_part;
   struct mpd_result_part order_part;
   struct mpd_result_part group_part;
+  char tagtype_buf[64];
+  char position_buf[64];
 
   // Pointers to the strings in mpd_result_part
-  const char *select;
   const char *where;
   const char *order;
   const char *group;
 
+  const char *tagtype;
+  const char *position;
+
   // Set to 0 if not found
   int offset;
   int limit;
-  int position;
 
   int err;
   char errmsg[128];
 };
+
+char *mpd_parser_quoted(const char *str);
 }
 
 %code {
@@ -246,13 +250,17 @@ struct tag_to_db_map {
 
 static struct tag_to_db_map tag_to_db_map[] =
 {
-  { "Artist",           "f.album_artist",       },
-  { "ArtistSort",       "f.album_artist_sort",  },
+  { "Artist",           "f.artist",             },
+  { "ArtistSort",       "f.artist_sort",        },
   { "AlbumArtist",      "f.album_artist",       },
   { "AlbumArtistSort",  "f.album_artist_sort",  },
   { "Album",            "f.album",              },
+  { "AlbumSort",        "f.album_sort",         },
   { "Title",            "f.title",              },
+  { "TitleSort",        "f.title_sort",         },
   { "Genre",            "f.genre",              },
+  { "Composer",         "f.composer",           },
+  { "ComposerSort",     "f.composer_sort",      },
   { "file",             "f.virtual_path",       },
 
   { "base",             "f.virtual_path",       },
@@ -283,6 +291,32 @@ static const char * tag_to_db(const char *tag)
     }
 
   return "error"; // Should never happen, means tag_to_db_map is out of sync with lexer
+}
+
+// Remove any backslash that was used to escape single or double quotes
+char *mpd_parser_quoted(const char *str)
+{
+  char *out = strdup(str + 1); // Copy from after the first quote
+  size_t len = strlen(out);
+  const char *src;
+  char *dst;
+
+  out[len - 1] = '\0'; // Remove terminating quote
+
+  // Remove escaping backslashes
+  for (src = dst = out; *src != '\0'; src++, dst++)
+    {
+      if (*src == '\\')
+	src++;
+      if (*src == '\0')
+	break;
+
+      *dst = *src;
+    }
+
+  *dst = '\0';
+
+  return out;
 }
 
 static void sql_from_ast(struct mpd_result *, struct mpd_result_part *, struct ast *);
@@ -391,7 +425,7 @@ static void sql_append_recursive(struct mpd_result *result, struct mpd_result_pa
       assert(a->l == NULL);
       assert(a->r == NULL);
       if (a->data)
-        sql_append(result, part, "%s ", (char *)a->data);
+        sql_append(result, part, "%s ", tag_to_db((char *)a->data));
       sql_append(result, part, "%s", is_not ? op_not : op);
       break;
     case SQL_APPEND_PARENS:
@@ -446,6 +480,8 @@ static void sql_from_ast(struct mpd_result *result, struct mpd_result_part *part
       sql_append_recursive(result, part, a, NULL, NULL, 0, SQL_APPEND_TIME); break;
     case MPD_T_SORT:
       sql_append_recursive(result, part, a, "ASC", "DESC", is_not, SQL_APPEND_ORDER); break;
+    case MPD_T_GROUP:
+      sql_append_recursive(result, part, a, ",", ",", is_not, SQL_APPEND_OPERATOR); break;
     case MPD_T_PARENS:
       sql_append_recursive(result, part, a, NULL, "NOT", is_not, SQL_APPEND_PARENS); break;
     default:
@@ -454,39 +490,47 @@ static void sql_from_ast(struct mpd_result *result, struct mpd_result_part *part
   }
 }
 
-static int result_set(struct mpd_result *result, struct ast *type, struct ast *filter, struct ast *sort, struct ast *window, struct ast *position, struct ast *group)
+static int result_set(struct mpd_result *result, char *tagtype, struct ast *filter, struct ast *sort, struct ast *window, char *position, struct ast *group)
 {
   memset(result, 0, sizeof(struct mpd_result));
 
-  sql_from_ast(result, &result->select_part, type);
-  if (result->select_part.offset)
-    result->select = result->select_part.str;
-  ast_free(type);
+  if (tagtype)
+    {
+      snprintf(result->tagtype_buf, sizeof(result->tagtype_buf), "%s", tag_to_db(tagtype));
+      result->tagtype = result->tagtype_buf;
+    }
 
   sql_from_ast(result, &result->where_part, filter);
   if (result->where_part.offset)
     result->where = result->where_part.str;
-  ast_free(filter);
 
   sql_from_ast(result, &result->order_part, sort);
   if (result->order_part.offset)
     result->order = result->order_part.str;
-  ast_free(sort);
 
   sql_from_ast(result, &result->group_part, group);
+  if (tagtype)
+    sql_append(result, &result->group_part, result->group_part.offset ? " , %s" : "%s", tag_to_db(tagtype));
   if (result->group_part.offset)
     result->group = result->group_part.str;
-  ast_free(group);
 
   if (position)
-    result->position = position->ival;
-  ast_free(position);
+    {
+      snprintf(result->position_buf, sizeof(result->position_buf), "%s", position);
+      result->position = result->position_buf;
+    }
 
   if (window && window->l->ival <= window->r->ival)
     {
       result->offset = window->l->ival;
       result->limit = window->r->ival - window->l->ival + 1;
     }
+
+  free(tagtype);
+  free(position);
+  ast_free(filter);
+  ast_free(sort);
+  ast_free(group);
   ast_free(window);
 
   return result->err;
@@ -603,12 +647,13 @@ static struct ast * ast_new_audioformat(int type, const char *value)
 %left MPD_T_AND
 %left MPD_T_NOT
 
-%type <ast> type
+%type <str> tagtype
 %type <ast> filter
 %type <ast> sort
 %type <ast> window
-%type <ast> position
+%type <str> position
 %type <ast> group
+%type <ast> groups
 %type <ast> predicate
 %type <ival> strbool
 %type <ival> intbool
@@ -622,7 +667,7 @@ static struct ast * ast_new_audioformat(int type, const char *value)
  *  playlistsearch {FILTER} [sort {TYPE}] [window {START:END}]
  *  find {FILTER} [sort {TYPE}] [window {START:END}]
  *  search {FILTER} [sort {TYPE}] [window {START:END}]
- * Type fswp (filter sort window position): 
+ * Type fswp (filter sort window position):
  *  findadd {FILTER} [sort {TYPE}] [window {START:END}] [position POS]
  *  searchadd {FILTER} [sort {TYPE}] [window {START:END}] [position POS]
  * Type fg (filter group):
@@ -634,17 +679,17 @@ static struct ast * ast_new_audioformat(int type, const char *value)
  *  searchaddpl {NAME} {FILTER} [sort {TYPE}] [window {START:END}] [position POS]
  *  searchplaylist {NAME} {FILTER} [{START:END}]
  *  case sensitivity for find
- *  multiple groupings
  */
 
 command: cmd_fsw filter sort window                        { if (result_set(result, NULL, $2, $3, $4, NULL, NULL) < 0) YYABORT; }
 | cmd_fswp filter sort window position                     { if (result_set(result, NULL, $2, $3, $4, $5, NULL) < 0) YYABORT; }
-| cmd_fg filter group                                      { if (result_set(result, NULL, $2, NULL, NULL, NULL, $3) < 0) YYABORT; }
-| cmd_tfg type filter group                                { if (result_set(result, $2, $3, NULL, NULL, NULL, $4) < 0) YYABORT; }
-| cmd_tfg type group                                       { if (result_set(result, $2, NULL, NULL, NULL, NULL, $3) < 0) YYABORT; }
+| cmd_fg filter groups                                     { if (result_set(result, NULL, $2, NULL, NULL, NULL, $3) < 0) YYABORT; }
+| cmd_fg groups                                            { if (result_set(result, NULL, NULL, NULL, NULL, NULL, $2) < 0) YYABORT; }
+| cmd_tfg tagtype filter groups                            { if (result_set(result, $2, $3, NULL, NULL, NULL, $4) < 0) YYABORT; }
+| cmd_tfg tagtype groups                                   { if (result_set(result, $2, NULL, NULL, NULL, NULL, $3) < 0) YYABORT; }
 ;
 
-type: MPD_T_STRTAG                                         { $$ = ast_data(MPD_T_STRTAG, $1); }
+tagtype: MPD_T_STRTAG                                      { if (asprintf(&($$), "%s", $1) < 0) YYABORT; }
 ;
 
 filter: filter MPD_T_AND filter                            { $$ = ast_new(MPD_T_AND, $1, $3); }
@@ -663,16 +708,23 @@ window: MPD_T_WINDOW MPD_T_NUM ':' MPD_T_NUM               { $$ = ast_new(MPD_T_
 | %empty                                                   { $$ = NULL; }
 ;
 
-position: MPD_T_POSITION MPD_T_NUM                         { $$ = ast_int(MPD_T_POSITION, $2); }
-| MPD_T_POSITION '-' MPD_T_NUM                             { $$ = ast_int(MPD_T_POSITION, -$3); }
+position: MPD_T_POSITION MPD_T_NUM                         { if (asprintf(&($$), "%d", $2) < 0) YYABORT; }
+| MPD_T_POSITION '+' MPD_T_NUM                             { if (asprintf(&($$), "+%d", $3) < 0) YYABORT; }
+| MPD_T_POSITION '-' MPD_T_NUM                             { if (asprintf(&($$), "-%d", $3) < 0) YYABORT; }
+| %empty                                                   { $$ = NULL; }
+;
+
+groups: groups group                                       { $$ = $1 ? ast_new(MPD_T_GROUP, $2, $1) : $2; }
 | %empty                                                   { $$ = NULL; }
 ;
 
 group: MPD_T_GROUP MPD_T_STRTAG                            { $$ = ast_data(MPD_T_STRTAG, $2); }
-| %empty                                                   { $$ = NULL; }
+| MPD_T_GROUP MPD_T_INTTAG                                 { $$ = ast_data(MPD_T_INTTAG, $2); }
 ;
 
+// We accept inttags with numeric and string values, so both date == 2007 and date == '2007'
 predicate: '(' MPD_T_STRTAG strbool MPD_T_STRING ')'       { $$ = ast_new($3, ast_data(MPD_T_STRTAG, $2), ast_data(MPD_T_STRING, $4)); }
+| '(' MPD_T_INTTAG strbool MPD_T_STRING ')'                { $$ = ast_new($3, ast_data(MPD_T_STRTAG, $2), ast_data(MPD_T_STRING, $4)); }
 | '(' MPD_T_INTTAG intbool MPD_T_NUM ')'                   { $$ = ast_new($3, ast_data(MPD_T_INTTAG, $2), ast_int(MPD_T_NUM, $4)); }
 | '(' MPD_T_ANYTAG strbool MPD_T_STRING ')'                { $$ = ast_new_any($3, $4); }
 | '(' MPD_T_AUDIOFORMATTAG strbool MPD_T_STRING ')'        { $$ = ast_new_audioformat($3, $4); }
@@ -693,7 +745,7 @@ intbool: MPD_T_LESS
 | MPD_T_GREATEREQUAL
 ;
 
-cmd_fsw: MPD_T_CMDPLAYLISTFIND 
+cmd_fsw: MPD_T_CMDPLAYLISTFIND
 | MPD_T_CMDPLAYLISTSEARCH
 | MPD_T_CMDSEARCH
 | MPD_T_CMDFIND

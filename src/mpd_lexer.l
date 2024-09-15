@@ -50,8 +50,8 @@
 
 %option case-insensitive
 
-singlequoted '(\\.|[^'])+'
-doublequoted \"(\\.|[^\"])+\"
+singlequoted '(\\.|[^'\\])*'
+doublequoted \"(\\.|[^"\\])*\"
 yyyymmdd  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
 
 %%
@@ -78,7 +78,11 @@ artistsort       { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 albumartist      { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 albumartistsort  { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 album            { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
+albumsort        { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 title            { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
+titlesort        { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
+composer         { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
+composersort     { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 genre            { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 file             { yylval->str = strdup(yytext); return MPD_T_STRTAG; }
 
@@ -109,15 +113,8 @@ and              { return MPD_T_AND; }
 not              { return MPD_T_NOT; }
 !                { return MPD_T_NOT; }
 
-{singlequoted}   { yylval->str=strdup(yytext+1);
-                   if(yylval->str[strlen(yylval->str)-1] == '\'')
-                     yylval->str[strlen(yylval->str)-1] = '\0';
-                   return MPD_T_STRING; }
-
-{doublequoted}   { yylval->str=strdup(yytext+1);
-                   if(yylval->str[strlen(yylval->str)-1] == '"')
-                     yylval->str[strlen(yylval->str)-1] = '\0';
-                   return MPD_T_STRING; }
+{singlequoted}   { yylval->str = mpd_parser_quoted(yytext); return MPD_T_STRING; }
+{doublequoted}   { yylval->str = mpd_parser_quoted(yytext); return MPD_T_STRING; }
 
 [0-9]+           { yylval->ival=atoi(yytext); return MPD_T_NUM; }
 

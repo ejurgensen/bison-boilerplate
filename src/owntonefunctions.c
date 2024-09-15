@@ -19,7 +19,7 @@ struct dmap_query_field_map * daap_query_field_lookup(char *tag, int len)
 // Simplified escape function for testing
 char * db_escape_string(const char *str)
 {
-  int newlen = 2 * strlen(str);
+  int newlen = 2 * strlen(str) + 1;
   char *new = malloc(newlen);
 
   memcpy(new, str, strlen(str) + 1);

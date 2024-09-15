@@ -244,39 +244,55 @@ static struct test_query mpd_test_queries[] =
 {
   {
     "search (artist == 'john') sort -artist window 9:10",
-    ""
+    " WHERE f.artist = 'john' ORDER BY f.artist DESC OFFSET 9 LIMIT 2"
   },
   {
     "find ((artist == 'john') OR ((album contains 'mary') AND !(albumartist != 'legacy')))",
-    ""
+    " WHERE (f.artist = 'john' OR (f.album LIKE '%mary%' AND f.album_artist = 'legacy'))"
   },
   {
     "count (artist == \"doublequote\") group album",
-    ""
+    " WHERE f.artist = 'doublequote' GROUP BY f.album"
   },
   {
     "search (!(any contains 'cat'))",
-    ""
+    " WHERE (NOT (f.album_artist LIKE '%cat%' OR f.artist LIKE '%cat%' OR f.album LIKE '%cat%' OR f.title LIKE '%cat%'))"
   },
   {
     "search (any == 'dog')",
-    ""
+    " WHERE (f.album_artist = 'dog' OR f.artist = 'dog' OR f.album = 'dog' OR f.title = 'dog')"
   },
   {
     "findadd (added-since '2022-01-01') position -1",
-    ""
+    " WHERE f.time_added >= strftime('%s', datetime('2022-01-01', 'utc')) @POS -1"
   },
   {
-    "list (base '/highway/to/hell')",
-    ""
+    "list album (base '/highway/to/hell')",
+    "SELECT f.album WHERE f.virtual_path LIKE '/highway/to/hell%' GROUP BY f.album"
   },
   {
-    "list album group albumartist",
-    ""
+    "list Album group Date group AlbumArtistSort group AlbumArtist",
+    "SELECT f.album GROUP BY f.album_artist , f.album_artist_sort , f.year , f.album"
+  },
+  {
+    "list Album (Artist starts_with \"K\") group AlbumArtist",
+    "SELECT f.album WHERE f.artist LIKE 'K%' GROUP BY f.album_artist , f.album"
   },
   {
     "find (AudioFormat == '44100:16:2')",
-    ""
+    " WHERE (f.samplerate = '44100' AND f.bits_per_sample = '16' AND f.channels = '2')"
+  },
+  {
+    "findadd (album == \"jns\") sort artist window 8:9 position -12",
+    " WHERE f.album = 'jns' ORDER BY f.artist ASC OFFSET 8 LIMIT 2 @POS -12"
+  },
+  {
+    "count ((Artist == \"Blue Foundation\") AND (album == \"\")) ",
+    " WHERE (f.artist = 'Blue Foundation' AND f.album = '')"
+  },
+  {
+    "count group artist",
+    " GROUP BY f.artist"
   },
 };
 
@@ -387,8 +403,8 @@ mpd_test_parse(int n, char *input, char *expected)
   if (mpd_lex_parse(&result, input) == 0)
     {
       printf("=== RESULT ===\n");
-      if (result.select)
-        offset += snprintf(buf + offset, sizeof(buf) - offset, "SELECT %s", result.select);
+      if (result.tagtype)
+        offset += snprintf(buf + offset, sizeof(buf) - offset, "SELECT %s", result.tagtype);
       if (result.where)
         offset += snprintf(buf + offset, sizeof(buf) - offset, " WHERE %s", result.where);
       if (result.order)
@@ -400,7 +416,7 @@ mpd_test_parse(int n, char *input, char *expected)
       if (result.limit)
         offset += snprintf(buf + offset, sizeof(buf) - offset, " LIMIT %d", result.limit);
       if (result.position)
-        offset += snprintf(buf + offset, sizeof(buf) - offset, " @POS %d", result.position);
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " @POS %s", result.position);
       printf("%s\n", buf);
       if (strcmp(expected, buf) == 0)
         printf("=== SUCCES ===\n");
@@ -482,6 +498,6 @@ int main(int argc, char *argv[])
   return 0;
 
  bad_args:
-  printf("Bad argumnents\n");
+  printf("Bad arguments\n");
   return 1;
 }
