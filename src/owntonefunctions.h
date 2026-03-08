@@ -32,3 +32,5 @@ struct dmap_query_field_map * daap_query_field_lookup(char *tag, int len);
 char * db_escape_string(const char *str);
 
 int safe_snreplace(char *s, size_t sz, const char *pattern, const char *replacement);
+
+#define dbmfi_offsetof(x) 0
