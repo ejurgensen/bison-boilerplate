@@ -235,8 +235,12 @@ static struct test_query daap_test_queries[] =
     "(f.teststr LIKE '%Radio\\%B\\_la*2%' ESCAPE '\\' AND f.testint = 1)"
   },
   {
-    "('daap.teststr!:*Radio%Bla*2*')", // dmap.itemname
-    "(f.teststr NOT LIKE '%Radio\\%Bla*2%' ESCAPE '\\')"
+    "'dmap.itemid:2 OR 1'",
+    "f.testint = 2"
+  },
+  {
+    "'daap.teststr:2 OR 1'",
+    "f.teststr = '2 OR 1'"
   },
 };
 
@@ -293,6 +297,10 @@ static struct test_query mpd_test_queries[] =
   {
     "count group artist",
     " GROUP BY f.artist"
+  },
+  {
+    "find ((Artist == 'foo'bar\\\" where id = 78; '))",
+    ""
   },
 };
 
