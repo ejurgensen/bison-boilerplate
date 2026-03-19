@@ -302,6 +302,18 @@ static struct test_query mpd_test_queries[] =
     "find ((Artist == 'foo'bar\\\" where id = 78; '))",
     ""
   },
+  {
+    "find (albumartist == 'Aretha Franklin') sort date",
+    " WHERE f.album_artist = 'Aretha Franklin' ORDER BY f.year ASC"
+  },
+  {
+    "find (track == '1') sort Last-Modified",
+    " WHERE f.track = '1' ORDER BY f.time_modified ASC"
+  },
+  {
+    "find ((album == '19') AND (albumartist == 'Adele')) sort track",
+    " WHERE (f.album = '19' AND f.album_artist = 'Adele') ORDER BY f.track ASC"
+  },
 };
 
 #if DEBUG_SHOW_LEX
